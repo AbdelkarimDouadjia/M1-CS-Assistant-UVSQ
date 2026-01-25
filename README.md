@@ -34,7 +34,7 @@ Le projet s'appuiera sur la technologie RAG plutôt que sur un chatbot tradition
 strictes. Cette approche permet d'avoir Interface conversationnelle, Base de connaissances structurée, ransformation de la question utilisateur en vecteur (embedding), Recherche de similarité dans la base vectorielle, Récupération des chunks de documents pertinents, Génération de réponse via LLM local avec prompt augmenté.
 
 ## Évolution du Système
-au depart on prevoit de coder en dur quellques fonctionelites pour tester des differents approches en suite on suite viendra l'implementation de fonctionalites plus avance comme le une interface administrateur pour l'ajout de nouveaux documents  et la capacité de téléversement de fichiers (Word, PDF)
+au depart on prevoit de coder en dur quellques fonctionelites pour tester des differents approches en suite on suite viendra l'implementation de fonctionalites plus avance comme le une interface administrateur pour l'ajout de nouveaux documents et la capacité de téléversement de fichiers (Word, PDF)
 
 ### Livrables Attendus 
 - Recherches sur les différentes générations de chatbots

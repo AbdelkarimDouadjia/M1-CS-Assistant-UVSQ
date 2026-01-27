@@ -49,3 +49,4 @@ au depart on prevoit de coder en dur quellques fonctionelites pour tester des di
 masters)
 - Préparer une première ébauche de l'approche technique pour la prochaine réunion
 - Documenter les trouvailles et liens intéressants au fur et à mesure des recherches
+- Indiquer les points ou on a utilisé des ia générative. 

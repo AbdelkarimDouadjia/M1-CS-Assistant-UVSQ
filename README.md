@@ -19,6 +19,7 @@ Encadrement : Yehia TAHER <yehia.taher@uvsq.fr>, Stéphane LOPES <stephane.lopes
 
 Etudiant :  BESSAA Abderraouf <abderraouf.bessaa@ens.uvsq.fr>
             TIGHILT Idir <idir.tighilt@ens.uvsq.fr>
+            DOUADJIA Abdelkarim <abdelkarim.douadjia@ens.uvsq.fr>
 
 
 

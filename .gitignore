@@ -1,0 +1,8 @@
+.venv
+./.venv/
+.env
+./.env/
+./.vscode/
+test.py
+.vscode/
+.github/

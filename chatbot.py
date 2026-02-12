@@ -97,12 +97,16 @@ if user_input := st.chat_input("Type your question here..."):
 
     Les connaissances : {knowledge}
 
-    Historique des questions et réponses : {questions_knowledge}
+    Historique des questions et réponses : {questions_knowledge} {response_knowledge}
 
     Indiquez toujours la source et le numéro de page lorsque vous fournissez une information issue des connaissances.
     """
     
     # Display assistant response with streaming
+    # Debug: afficher l'historique des questions
+    with st.expander("🔍 Debug - Historique des questions"):
+        st.write(questions_knowledge)
+    
     with st.chat_message("assistant"):
         placeholder = st.empty()
         response = ""

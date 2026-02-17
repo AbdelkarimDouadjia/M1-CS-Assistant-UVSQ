@@ -13,7 +13,10 @@ DATA_PATH = r"data"
 CHROMA_PATH = r"chroma_db"
 
 # initiate the embeddings model
-embeddings_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001")
+embeddings_model = GoogleGenerativeAIEmbeddings(
+    model="models/gemini-embedding-001")
+
+
 
 # initiate the vector store
 vector_store = Chroma(
@@ -22,7 +25,7 @@ vector_store = Chroma(
     persist_directory=CHROMA_PATH,
 )
 
-# loading PDF documents
+# loading PDFc:\Users\idir\Downloads\Réunion_de_rentrée_—_M1_AMIS,_DataScale,_IRS_et_SeCReTS.pdf documents
 pdf_loader = PyPDFDirectoryLoader(DATA_PATH)
 pdf_documents = pdf_loader.load()
 
@@ -35,12 +38,16 @@ raw_documents = pdf_documents + txt_documents
 
 # splitting the document
 text_splitter = RecursiveCharacterTextSplitter(
-    chunk_size=300,
-    chunk_overlap=100,
-    length_function=len,
-    is_separator_regex=False,
+    separators=[
+        "\nArticle ",
+        "\nARTICLE ",
+        "\nTITRE ",
+        "\nTitre ",
+        "\n\n"  
+    ],
+    chunk_size=3000,
+    chunk_overlap=300,
 )
-
 # creating the chunks
 chunks = text_splitter.split_documents(raw_documents)
 

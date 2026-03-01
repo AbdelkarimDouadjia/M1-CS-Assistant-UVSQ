@@ -6,3 +6,7 @@
 test.py
 .vscode/
 .github/
+chroma_db/
+_pycache_/
+__pycache__/
+chat_logs.db

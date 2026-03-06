@@ -1,0 +1,16 @@
+chunk_size: 1200
+chunk_overlap: 200
+separators:
+  - "\n\nTITRE \\d+ – .*"
+  - "\n\nArticle \\d+\\.?\\d*\\.? –? .*"
+  - "\n\nPREAMBULE"
+  - "\n\nArticle \\d+[a-z]\\."
+  - "\n\n+"
+  - "\n"
+  - "(?<=[.?!])\\s+"
+  - "(?<=;)\\s*"
+  - "(?<=:)\\s*"
+  - "(?<=,)\\s*"
+  - "\\s+"
+  - ""
+is_separator_regex: true

@@ -1,5 +1,6 @@
 import streamlit as st
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from dotenv import load_dotenv
 
@@ -35,7 +36,7 @@ if "responces" not in st.session_state:
 # Initialize models
 @st.cache_resource
 def load_models():
-    embeddings_model = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
+    embeddings_model = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
     llm = ChatGoogleGenerativeAI(temperature=0.5, model='gemini-2.5-flash')
     vector_store = Chroma(
         collection_name="example_collection",
@@ -92,6 +93,7 @@ if user_input := st.chat_input("Type your question here..."):
     Lors de vos réponses, vous n'utilisez pas vos connaissances internes,
     mais uniquement les informations de la section "Les connaissances".
     Vous ne mentionnez jamais à l'utilisateur que la réponse provient de ces connaissances fournies.
+    ET tu peux utiliser l'lhistorique des questions et réponses précédentes pour rependre à la question actuelle si cette derniere en fait référence.
 
     La question : {user_input}
 

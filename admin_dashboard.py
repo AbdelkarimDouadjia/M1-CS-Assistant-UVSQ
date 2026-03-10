@@ -391,14 +391,23 @@ with col_review:
     unanswered_list = get_unanswered_questions(limit=10)
     
     if unanswered_list:
+        cards_html = ""
         for q in unanswered_list:
-            st.markdown(f"""
-            <div class="unanswered-card">
-                <div class="unanswered-label">Question sans réponse</div>
-                <div class="unanswered-question">"{q['question']}"</div>
-                <div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">{q['timestamp']}</div>
-            </div>
-            """, unsafe_allow_html=True)
+            question_text = str(q['question']).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            timestamp_text = str(q['timestamp'])
+            cards_html += (
+                '<div class="unanswered-card">'
+                '<div class="unanswered-label">Question sans réponse</div>'
+                '<div class="unanswered-question">"' + question_text + '"</div>'
+                '<div style="font-size: 11px; color: #94a3b8; margin-top: 6px;">' + timestamp_text + '</div>'
+                '</div>'
+            )
+        st.markdown(
+            '<div style="max-height: 340px; overflow-y: auto; padding-right: 8px;">'
+            + cards_html
+            + '</div>',
+            unsafe_allow_html=True,
+        )
     else:
         st.success("🎉 Aucune question sans réponse !")
 

@@ -58,7 +58,7 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap');
 
     /* Global */
-    .block-container { padding-top: 1rem; }
+    .block-container { padding-top: 3rem; }
     
     /* Stat cards */
     .stat-card {

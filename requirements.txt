@@ -5,3 +5,8 @@ langchain-chroma>=0.1.0
 langchain-community>=0.3.0
 langchain-text-splitters>=0.3.0
 pypdf>=5.0.0
+
+
+python -m streamlit run admin_dashboard.py
+streamlit run chatbot.py 
+python ingest_database.py  

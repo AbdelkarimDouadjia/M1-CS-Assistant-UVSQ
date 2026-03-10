@@ -6,3 +6,10 @@
 test.py
 .vscode/
 .github/
+models/
+raouf_test/
+.vscode/
+.venv/
+.env/
+tempCodeRunnerFile.py
+_pycache__/

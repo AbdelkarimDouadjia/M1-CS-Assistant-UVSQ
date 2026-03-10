@@ -40,6 +40,11 @@ class SmartChunkingConfig:
             f"- Objectif : que chaque chunk soit autonome et suffisamment riche en contexte pour un système RAG.\n"
             f"- Si tu utilises des regex dans les séparateurs, convertis TOUS les séparateurs "
             f"en regex et ajoute is_separator_regex: true.\n"
+            f"CONTRAINTES STRICTES SUR LES REGEX :\n"
+            f"- INTERDIT d'utiliser des flags inline comme (?m), (?i), (?s), (?x) dans les separators.\n"
+            f"- Pour matcher début de ligne, utilise \\n au lieu de ^ avec (?m). Ex: '\\n# ' au lieu de '(?m)^# '\n"
+            f"- Chaque separator doit être un pattern regex autonome et valide sans aucun flag.\n"
+            f"- Les lookbehind (?<=...) et lookahead (?=...) sont autorisés.\n"
             f"Donne UNIQUEMENT le contenu YAML brut, sans balises markdown, sans explication:\n{document_content}"
         )
 

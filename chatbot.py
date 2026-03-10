@@ -36,7 +36,10 @@ if "responces" not in st.session_state:
 # Initialize models
 @st.cache_resource
 def load_models():
-    embeddings_model = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
+    embeddings_model = HuggingFaceEmbeddings(
+    model_name="./models/bge-base-en-v1.5",  # chemin local
+    model_kwargs={"device": "cpu"}
+)
     llm = ChatGoogleGenerativeAI(temperature=0.5, model='gemini-2.5-flash')
     vector_store = Chroma(
         collection_name="example_collection",

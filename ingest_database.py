@@ -17,7 +17,10 @@ CHROMA_PATH = r"chroma_db"
 
 
 # initiate the embeddings model (local)
-embeddings_model = HuggingFaceEmbeddings(model_name="BAAI/bge-base-en-v1.5")
+embeddings_model = HuggingFaceEmbeddings(
+    model_name="./models/bge-base-en-v1.5",  # chemin local
+    model_kwargs={"device": "cpu"}
+)
 # initiate the vector store
 vector_store = Chroma(
     collection_name="example_collection",

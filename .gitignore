@@ -13,3 +13,7 @@ raouf_test/
 .env/
 tempCodeRunnerFile.py
 _pycache__/
+chroma_db/
+_pycache_/
+__pycache__/
+chat_logs.db

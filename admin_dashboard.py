@@ -320,10 +320,21 @@ with col_upload:
     if st.button("🚀 Mettre à jour la base de données", type="primary"):
         with st.spinner("Mise à jour en cours... Veuillez patienter."):
             try:
-                nb_chunks = clear_and_reingest()  # Appel à ingest_database.py
+                nb_chunks = clear_and_reingest(reset_vector_store=False)  # Appel à ingest_database.py
                 st.success(f"✅ Base mise à jour ! ({nb_chunks} chunks créés)")
             except Exception as e:
                 st.error(f"❌ Erreur : {e}")
+
+
+    if st.button("⚠️ Vider la base de données (sans avec regeneration )", type="secondary"):
+        with st.spinner("Vider la base de données... Veuillez patienter."):
+            try:
+                clear_and_reingest(reset_vector_store=True)  # Appel à ingest_database.py
+                st.success(f"✅ Base vidée ! Tous les documents supprimés de ChromaDB.")
+            except Exception as e:
+                st.error(f"❌ Erreur : {e}")
+
+
 
 with col_files:
     # --- Liste des fichiers existants dans data/ ---
@@ -333,6 +344,8 @@ with col_files:
         files = [f for f in os.listdir(DATA_PATH) if not f.startswith(".")]
         if files:
             for file_name in files:
+                if file_name.endswith(".yaml"):
+                    continue  # Ignorer les fichiers de config YAML générés
                 # 3 colonnes : nom du fichier | taille | bouton supprimer
                 col_name, col_size, col_del = st.columns([3, 1, 1])
                 file_size = os.path.getsize(os.path.join(DATA_PATH, file_name))

@@ -244,7 +244,7 @@ def ingest_all_documents():
     # glob="**/*.txt" = chercher récursivement tous les fichiers .txt
     txt_loader = DirectoryLoader(DATA_PATH, glob="**/*.txt", loader_cls=TextLoader)
     txt_documents = txt_loader.load()
-
+    
     # --- Étape 3 : Combiner PDF + TXT ---
     raw_documents = pdf_documents + txt_documents
 
@@ -322,7 +322,7 @@ def ingest_all_documents():
 
 
 
-def clear_and_reingest():
+def clear_and_reingest(reset_vector_store=False):
     """
     Vide complètement la base ChromaDB puis réingère tous les documents.
     
@@ -341,7 +341,8 @@ def clear_and_reingest():
 
     # Étape 1 : Supprimer tous les documents de la collection
     vector_store = get_vector_store(embeddings_model)
-    vector_store.reset_collection()  # Vide la collection ChromaDB
+    if reset_vector_store:
+        vector_store.reset_collection()  # Vide la collection ChromaDB
 
     # Étape 2 : Recharger tous les documents du dossier data/
     return ingest_all_documents()

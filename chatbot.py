@@ -86,13 +86,14 @@ def load_models():
     - retriever : l'outil de recherche qui trouve les 5 documents les plus pertinents
     """
     # Modèle d'embeddings Google (même modèle que dans ingest_database.py)
-    embeddings_model = HuggingFaceEmbeddings(
-    model_name="./models/gemini-bge-base-en-v1.5",  # chemin local
-    model_kwargs={"device": "cpu"}
-)
+#     embeddings_model = HuggingFaceEmbeddings(
+#     model_name="./models/bge-base-en-v1.5",  # chemin local
+#     model_kwargs={"device": "cpu"}
+# )
+    embeddings_model = GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
 
     # Modèle de chat Gemini (temperature=0.5 : semi-créatif, semi-factuel)
-    # llm = ChatGoogleGenerativeAI(temperature=0.5, model='gemini-2.5-flash')
+    llm = ChatGoogleGenerativeAI(temperature=0.5, model='gemini-2.5-flash')
 
     # Connexion à la base de données ChromaDB
     vector_store = Chroma(

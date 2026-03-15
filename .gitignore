@@ -4,11 +4,9 @@
 ./.env/
 ./.vscode/
 test.py
-.vscode/
 .github/
 models/
 raouf_test/
-.vscode/
 .venv/
 .env/
 tempCodeRunnerFile.py
@@ -16,6 +14,12 @@ _pycache__/
 chroma_db/
 _pycache_/
 __pycache__/
+# Ignore Python cache
+__pycache__/
+# Ignore Chroma DB
+chroma_db/chroma.sqlite3
+# Ignore YAML config files in data
+data/*.yaml
 chat_logs.db
 data/
 chroma_db/

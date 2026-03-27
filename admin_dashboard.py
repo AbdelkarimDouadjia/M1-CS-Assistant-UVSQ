@@ -1,200 +1,122 @@
-# ================================================================
-# admin_dashboard.py - Interface d'administration du chatbot
-# ================================================================
-# Ce fichier crée le dashboard admin avec Streamlit.
-# Il affiche les statistiques, permet de gérer les fichiers
-# de la base de connaissances, et de mettre à jour ChromaDB.
-#
-# Sections du dashboard :
-#   1. 📊 Cartes de statistiques (total, taux succès, sans réponse, aujourd'hui)
-#   2. 📚 Knowledge Base (upload, liste, suppression, mise à jour)
-#   3. 📈 Graphique tendance des messages
-#   4. ⚠️ Questions sans réponse à examiner
-#   5. 💬 Interactions récentes
-#   6. 📊 Statistiques détaillées (graphique répondu/non répondu)
-#   7. 📋 Historique complet avec filtres et export CSV
-#
-# Lancement : streamlit run admin_dashboard.py
-# ================================================================
+import streamlit as st
+import pandas as pd
+import os
+import json
+from datetime import datetime
+from pathlib import Path
+from dashboard_styles import DASHBOARD_CSS
 
-# --- Imports ---
-import streamlit as st        # Framework pour créer l'interface web
-import pandas as pd           # Manipulation de données (tableaux, export CSV)
-import os                     # Gestion des fichiers (lister, supprimer, taille)
-from datetime import datetime, timedelta  # Gestion des dates et heures
-
-# Imports depuis nos propres modules
 from ingest_database import (
-    DATA_PATH,                # Chemin du dossier data/ ("data")
-    clear_and_reingest,       # Fonction : vider ChromaDB + réingérer tous les documents
+    DATA_PATH,
+    clear_and_reingest,
 )
 from chat_logger import (
-    get_total_messages,       # → Nombre total de questions posées
-    get_answered_count,       # → Nombre de questions avec réponse
-    get_unanswered_count,     # → Nombre de questions sans réponse
-    get_success_rate,         # → Taux de succès en %
-    get_unanswered_questions, # → Liste des questions sans réponse
-    get_recent_interactions,  # → Dernières interactions
-    get_messages_per_day,     # → Messages par jour (pour le graphique)
-    get_all_logs,             # → Toutes les interactions (pour l'export)
-    get_messages_today,       # → Messages envoyés aujourd'hui
+    get_total_messages,
+    get_answered_count,
+    get_unanswered_count,
+    get_success_rate,
+    get_unanswered_questions,
+    get_recent_interactions,
+    get_messages_per_day,
+    get_all_logs,
+    get_messages_today,
 )
 
-# --- Configuration de la page Streamlit ---
+
+@st.cache_data(ttl=30)
+def load_evaluation_reports():
+    """Charge les rapports d'evaluation JSON trouves dans le projet."""
+    base_dir = Path(__file__).parent
+    search_dirs = [base_dir, base_dir / "evaluation_chatbot"]
+    reports = []
+
+    def _to_report_payload(content):
+        # Supporte 2 formats:
+        # 1) dict avec "results"
+        # 2) liste directe de resultats
+        if isinstance(content, dict):
+            results = content.get("results", []) if isinstance(content.get("results", []), list) else []
+            payload = dict(content)
+            payload["results"] = results
+            return payload
+
+        if isinstance(content, list):
+            results = content
+            total_questions = len(results)
+            answered_count = sum(1 for r in results if isinstance(r, dict) and r.get("answered") is True)
+
+            def _avg(field_name):
+                vals = [r.get(field_name) for r in results if isinstance(r, dict) and isinstance(r.get(field_name), (int, float))]
+                return (sum(vals) / len(vals)) if vals else None
+
+            return {
+                "results": results,
+                "total_questions": total_questions,
+                "answer_rate": (answered_count / total_questions) if total_questions else None,
+                "global_score": _avg("hybrid_score"),
+                "hybrid_scoring": {"avg_hybrid_score": _avg("hybrid_score")},
+            }
+
+        return None
+
+    for directory in search_dirs:
+        if not directory.exists():
+            continue
+        for file_path in directory.glob("*.json"):
+            try:
+                with file_path.open("r", encoding="utf-8") as f:
+                    content = json.load(f)
+                payload = _to_report_payload(content)
+                if payload is not None and isinstance(payload.get("results", []), list):
+                    reports.append(
+                        {
+                            "name": file_path.name,
+                            "mtime": file_path.stat().st_mtime,
+                            "data": payload,
+                        }
+                    )
+            except Exception:
+                continue
+
+    reports.sort(key=lambda item: item["mtime"], reverse=True)
+    return reports
+
+
+def _to_percent_value(value):
+    """Convertit une valeur de score en pourcentage borné [0, 100]."""
+    if not isinstance(value, (int, float)):
+        return None
+    percent = value * 100 if value <= 1 else value
+    return max(0.0, min(100.0, float(percent)))
+
+
+def _to_percent_text(value, decimals=1):
+    percent = _to_percent_value(value)
+    if percent is None:
+        return "N/A"
+    return f"{percent:.{decimals}f}%"
+
 st.set_page_config(
-    page_title="Saclay AI - Admin Dashboard",  # Titre de l'onglet navigateur
-    page_icon="📊",                            # Icône de l'onglet
-    layout="wide",                             # Utiliser toute la largeur de l'écran
+    page_title="Saclay AI - Admin Dashboard",
+    page_icon="📊",
+    layout="wide",
 )
 
-# ================================================================
-# STYLE CSS PERSONNALISÉ
-# ================================================================
-# Ce CSS est injecté dans la page pour personnaliser l'apparence
-# des cartes de stats, des badges, des cartes de questions, etc.
-# Inspiré de la maquette HTML fournie.
-st.markdown("""
-<style>
-    @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap');
+st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
 
-    /* Global */
-    .block-container { padding-top: 3rem; }
-    
-    /* Stat cards */
-    .stat-card {
-        background: white;
-        border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-    }
-    .stat-label {
-        color: #64748b;
-        font-size: 14px;
-        font-weight: 500;
-    }
-    .stat-value {
-        color: #0f172a;
-        font-size: 28px;
-        font-weight: 700;
-        margin-top: 4px;
-    }
-    .stat-badge-green {
-        display: inline-block;
-        background: #f0fdf4;
-        color: #16a34a;
-        font-size: 12px;
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 999px;
-    }
-    .stat-badge-red {
-        display: inline-block;
-        background: #fef2f2;
-        color: #dc2626;
-        font-size: 12px;
-        font-weight: 700;
-        padding: 2px 8px;
-        border-radius: 999px;
-    }
-
-    /* Unanswered card */
-    .unanswered-card {
-        background: #fefce8;
-        border-left: 4px solid #facc15;
-        padding: 16px;
-        border-radius: 8px;
-        margin-bottom: 12px;
-    }
-    .unanswered-label {
-        color: #854d0e;
-        font-size: 11px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 4px;
-    }
-    .unanswered-question {
-        color: #334155;
-        font-size: 14px;
-        font-style: italic;
-    }
-
-    /* Recent interaction */
-    .interaction-card {
-        padding: 12px 16px;
-        border-bottom: 1px solid #f1f5f9;
-    }
-    .interaction-card:hover {
-        background: #f8fafc;
-    }
-    .interaction-user {
-        font-size: 13px;
-        font-weight: 700;
-        color: #0f172a;
-    }
-    .interaction-time {
-        font-size: 11px;
-        color: #94a3b8;
-    }
-    .interaction-question {
-        font-size: 13px;
-        color: #64748b;
-        margin-top: 2px;
-    }
-    .dot-green {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        background: #22c55e;
-        border-radius: 50%;
-        margin-right: 6px;
-    }
-    .dot-yellow {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        background: #eab308;
-        border-radius: 50%;
-        margin-right: 6px;
-    }
-    
-    /* Header */
-    .dashboard-header {
-        font-size: 32px;
-        font-weight: 800;
-        color: #0f172a;
-        margin-bottom: 4px;
-    }
-    .dashboard-subtitle {
-        color: #64748b;
-        font-size: 15px;
-    }
-</style>
-""", unsafe_allow_html=True)
-
-
-# =============================================
-# HEADER
-# =============================================
-# --- En-tête : Titre à gauche, bouton export à droite ---
-col_title, col_actions = st.columns([3, 1])  # 3/4 pour le titre, 1/4 pour les actions
+col_title, col_actions = st.columns([3, 1])
 
 with col_title:
     st.markdown('<div class="dashboard-header">📊 University Dashboard</div>', unsafe_allow_html=True)
     st.markdown('<div class="dashboard-subtitle">Métriques en temps réel du Chatbot IA Paris-Saclay</div>', unsafe_allow_html=True)
 
 with col_actions:
-    st.write("")  # Espacement vertical
+    st.write("")
 
-    # Bouton d'export CSV : télécharge toutes les interactions en fichier CSV
     all_logs = get_all_logs()
     if all_logs:
-        # Convertir les résultats SQLite en DataFrame pandas
         df_export = pd.DataFrame([dict(row) for row in all_logs])
-        # Convertir le DataFrame en CSV encodé en UTF-8
         csv = df_export.to_csv(index=False).encode("utf-8")
-        # Bouton de téléchargement Streamlit
         st.download_button(
             label="📥 Exporter le rapport (CSV)",
             data=csv,
@@ -202,19 +124,14 @@ with col_actions:
             mime="text/csv",
         )
 
-st.markdown("---")  # Ligne de séparation horizontale
+st.markdown("---")
 
-# =============================================
-# STATS CARDS
-# =============================================
-# --- Récupérer toutes les statistiques depuis SQLite ---
-total = get_total_messages()       # Nombre total de questions posées
-answered = get_answered_count()    # Nombre de questions avec réponse
-unanswered = get_unanswered_count()  # Nombre de questions sans réponse
-success_rate = get_success_rate()  # Pourcentage de réussite
-today = get_messages_today()       # Nombre de messages aujourd'hui
+total = get_total_messages()
+answered = get_answered_count()
+unanswered = get_unanswered_count()
+success_rate = get_success_rate()
+today = get_messages_today()
 
-# Créer 4 colonnes égales pour les cartes de statistiques
 col1, col2, col3, col4 = st.columns(4)
 
 with col1:
@@ -262,6 +179,111 @@ with col4:
         <div class="stat-value">{today}</div>
     </div>
     """, unsafe_allow_html=True)
+
+st.write("")
+
+# =============================================
+# SECTION : EVALUATION CHATBOT (SCORE + Q/R)
+# =============================================
+st.markdown("---")
+st.subheader("🧪 Évaluation du chatbot")
+
+evaluation_reports = load_evaluation_reports()
+
+if evaluation_reports:
+    options = [
+        f"{r['name']} — {datetime.fromtimestamp(r['mtime']).strftime('%Y-%m-%d %H:%M:%S')}"
+        for r in evaluation_reports
+    ]
+    selected_index = st.selectbox(
+        "Choisir un rapport d'évaluation",
+        options=range(len(options)),
+        format_func=lambda idx: options[idx],
+    )
+
+    selected_report = evaluation_reports[selected_index]["data"]
+    hybrid = selected_report.get("hybrid_scoring", {})
+
+    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+    with col_e1:
+        st.metric("Questions évaluées", selected_report.get("total_questions", 0))
+    with col_e2:
+        answer_rate = selected_report.get("answer_rate")
+        if not isinstance(answer_rate, (int, float)):
+            results_tmp = selected_report.get("results", [])
+            if results_tmp:
+                answered_tmp = sum(1 for r in results_tmp if isinstance(r, dict) and r.get("answered") is True)
+                answer_rate = answered_tmp / len(results_tmp)
+        st.metric("Taux de réponse", _to_percent_text(answer_rate, decimals=1))
+    with col_e3:
+        global_score = selected_report.get("global_score")
+        if not isinstance(global_score, (int, float)):
+            vals = [
+                r.get("hybrid_score")
+                for r in selected_report.get("results", [])
+                if isinstance(r, dict) and isinstance(r.get("hybrid_score"), (int, float))
+            ]
+            global_score = (sum(vals) / len(vals)) if vals else None
+        st.metric("Score global", _to_percent_text(global_score, decimals=1))
+    with col_e4:
+        avg_hybrid_score = hybrid.get("avg_hybrid_score")
+        if not isinstance(avg_hybrid_score, (int, float)):
+            vals = [
+                r.get("hybrid_score")
+                for r in selected_report.get("results", [])
+                if isinstance(r, dict) and isinstance(r.get("hybrid_score"), (int, float))
+            ]
+            avg_hybrid_score = (sum(vals) / len(vals)) if vals else None
+        st.metric("Score hybride", _to_percent_text(avg_hybrid_score, decimals=1))
+
+    results = selected_report.get("results", [])
+    if results:
+        df_eval = pd.DataFrame(results)
+
+        preferred_columns = [
+            "question",
+            "response",
+            "answered",
+            "num_docs",
+            "hybrid_score",
+            "judge_score",
+            "rag_score",
+        ]
+        display_columns = [c for c in preferred_columns if c in df_eval.columns]
+        if not display_columns:
+            display_columns = list(df_eval.columns)
+
+        df_display_eval = df_eval[display_columns].copy()
+        if "answered" in df_display_eval.columns:
+            df_display_eval["answered"] = df_display_eval["answered"].map({True: "✅ Oui", False: "❌ Non"})
+        rename_map = {
+            "question": "Question",
+            "response": "Réponse",
+            "answered": "Répondu",
+            "num_docs": "Docs trouvés",
+            "hybrid_score": "Score hybride",
+            "judge_score": "Score judge",
+            "rag_score": "Score RAG",
+        }
+        df_display_eval = df_display_eval.rename(columns=rename_map)
+
+        st.markdown("##### Questions et réponses évaluées")
+        st.dataframe(df_display_eval, use_container_width=True, height=420)
+
+        eval_csv = df_display_eval.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📥 Exporter les questions/réponses évaluées (CSV)",
+            data=eval_csv,
+            file_name=f"evaluation_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            mime="text/csv",
+        )
+    else:
+        st.info("Ce rapport ne contient pas de résultats détaillés.")
+else:
+    st.info(
+        "Aucun rapport d'évaluation trouvé. Lancez d'abord le script d'évaluation, "
+        "puis rechargez ce dashboard."
+    )
 
 st.write("")
 

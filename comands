@@ -1,9 +1,0 @@
-C:/Users/idir/chatbot/.venv/Scripts/python.exe -m streamlit run chatbot.py
-
-quest ce que tu connais
-
-
-python -m streamlit run admin_dashboard.py
-streamlit run chatbot.py 
-python ingest_database.py 
-

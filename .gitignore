@@ -24,3 +24,6 @@ chat_logs.db
 data/
 chroma_db/
 _pycache_/
+evaluation_results/
+evaluation_results_*.csv
+evaluation_results_*.json

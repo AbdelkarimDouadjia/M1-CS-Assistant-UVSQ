@@ -105,7 +105,6 @@ Comment valider un semestre en M1.
 Combien de crédits ECTS faut-il obtenir.
 Que se passe-t-il si je ne valide pas une UE.
 Peut-on compenser entre semestres.
-
 Comment fonctionne le rattrapage.
 Suis-je obligé de repasser toutes les matières en rattrapage.
 Peut-on conserver une note d’une session à l’autre.
@@ -187,7 +186,6 @@ Comment transformer un TER en projet professionnel.
 Le TER peut-il mener à un stage.
 Le choix du TER influence-t-il la spécialisation en M2.
 Calcule la moyenne entre 11.333 et 14 pour Bases de données avancées.
-
 Vérifie si 14.067 est cohérent avec 12.6 et 14.8.
 Vérifie si 11.917 correspond à 10.75 et 12.5.
 Vérifie si 18 est cohérent avec 16 et 19.

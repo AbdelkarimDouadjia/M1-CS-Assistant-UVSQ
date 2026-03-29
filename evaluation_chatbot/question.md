@@ -1,3 +1,18 @@
+Pourquoi mon enseignant ne me repond-il pas ?
+C'est quoi la graduate school ?
+Je suis dans le M1 AMIS mais j'aimerais rejoindre le Master Datascale. Quelles sont les possibilités qui s'offrent à moi ?
+Je souhaite conserver une note. Comment dois-je procéder ?
+L'UE Application Web et Sécurité dispose-t'elle de modalités particulières ? Si oui, lesquelles
+Je suis en M1 Datascale. Quelles UE font partie des BCC Socle fondamental ?
+Comment fonctionne la compensation entre les BCC ?
+Y-a-t'il un weekend d'intégration en M1 ?
+Quand a lieu le jury du premier semestre ?
+À quelle période se déroulent les examens du premier semestre ?
+Quelle conséquence aura mon absence au CC ?
+Comment dois-je faire pour justifier mon absence ?
+Quelles sont les aides sociales disponibles ?
+Qu'est-ce qu'une absence justifiée ?
+Qui est responsable du M1 AMIS ?
 Quels sont les critères d’admission en M1 informatique.
 Mon diplôme étranger est-il accepté.
 Quelle moyenne minimale est demandée.

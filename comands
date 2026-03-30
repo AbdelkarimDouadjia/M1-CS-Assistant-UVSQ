@@ -1,4 +1,4 @@
-C:/Users/idir/chatbot/.venv/Scripts/python.exe -m streamlit run chatbot.py
-
-quest ce que tu connais
+ssh -L 8000:localhost:8000 -L 8001:localhost:8001 abdelkarim@charizard.prism.uvsq.fr
+python ingest_database.py
+python -m streamlit run chatbot.py
 

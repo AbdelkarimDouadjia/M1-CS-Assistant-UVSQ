@@ -6,3 +6,7 @@
 test.py
 .vscode/
 .github/
+__pycache__/
+chat_logs.db
+chroma_db/
+tempCodeRunnerFile.py

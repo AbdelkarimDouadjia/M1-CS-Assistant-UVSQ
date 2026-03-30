@@ -197,10 +197,10 @@ def context_keyword_coverage_score(response: str, retrieved_docs: List) -> float
     if not retrieved_docs or not response:
         return 0.0
     
-    # Extraire les mots importants de la réponse (mots > 4 caractères)
+    # Extraire les mots importants de la réponse (mots > 3 caractères)
     response_words = set(
         word.lower() for word in response.split()
-        if len(word) > 4 and word.isalpha()
+        if len(word) > 3 and word.isalpha()
     )
     
     # Kombiner tous les documents
@@ -300,9 +300,14 @@ def llm_judge_scores(
 ) -> Dict[str, float]:
     """
     Utilise l'LLM pour juger automatiquement la qualité de la réponse.
-    Évalue: fidélité, pertinence, complétude.
+        Évalue: fidélité, pertinence, complétude, satisfaction de la question
+        et présence éventuelle de doute/non-réponse.
     """
     prompt = f"""Tu es un évaluateur d'IA expert. Évalue cette réponse sur une échelle 0-100.
+
+La réponse est satisfaisante si elle répond clairement à la question,
+sans ambiguïté majeure ni doute non résolu. Si la question n'est pas
+réellement traitée, les scores doivent être bas.
 
 Question: {question}
 
@@ -310,9 +315,9 @@ Réponse: {response}
 
 Réponds en JSON avec ces 3 critères:
 {{
-  "faithfulness": <Score de fidélité - la réponse respecte-t-elle la question?>,
-  "answer_relevance": <Score de pertinence - la réponse est-elle pertinente?>,
-  "completeness": <Score de complétude - la réponse est-elle complète?>
+    "faithfulness": <Score de fidélité - la réponse respecte-t-elle fidèlement la question et les faits?>,
+    "answer_relevance": <Score de pertinence - la réponse répond-elle vraiment à la question posée?>,
+    "completeness": <Score de complétude - la réponse est-elle complète, claire, sans doute important, et non inachevée?>
 }}
 
 Réponse JSON uniquement:"""

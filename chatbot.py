@@ -1,6 +1,7 @@
 import os
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import requests
 import streamlit as st
@@ -9,17 +10,18 @@ from langchain_chroma import Chroma
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
+from chat_logger import log_question
 
 load_dotenv()
 
-# Page configuration
+# --- Configuration de la page Streamlit ---
 st.set_page_config(
     page_title="RAG Chatbot",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# Custom CSS for better styling
+# --- Style CSS personnalisé ---
 st.markdown("""
     <style>
     .main { padding-top: 0; }
@@ -68,13 +70,17 @@ def is_reranker_up() -> bool:
         st.session_state._rr_ts = time.time()
     return st.session_state._rr_up
 
-# Initialize session state
+# ================================================================
+# INITIALISATION DE LA SESSION
+# ================================================================
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "questions" not in st.session_state:
     st.session_state.questions = []
 if "responces" not in st.session_state:
     st.session_state.responces = []
+if "session_id" not in st.session_state:
+    st.session_state.session_id = str(uuid4())
 
 
 def build_vllm_chat(model_name: str) -> ChatOpenAI:
@@ -99,7 +105,9 @@ def build_fallback_chat():
     return None
 
 
-# Initialize models
+# ================================================================
+# CHARGEMENT DES MODÈLES IA
+# ================================================================
 @st.cache_resource
 def load_models():
     embeddings_model = HuggingFaceEmbeddings(
@@ -213,21 +221,24 @@ def rerank(query: str, docs, top_k: int = FINAL_CONTEXT_K):
 
 llm, llm_fallback, retriever = load_models()
 
-# UI
+# ================================================================
+# INTERFACE UTILISATEUR (UI)
+# ================================================================
 st.title("💬 RAG Chatbot")
 st.markdown("*Ask anything - I'll answer based on the knowledge base*")
 
-# Display chat history
+# --- Afficher l'historique des messages ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.write(message["content"])
 
-# Chat input
+# --- Zone de saisie du chat ---
 if user_input := st.chat_input("Type your question here..."):
-    # Add user message to history
+
+    # Étape 1 : Ajouter la question de l'utilisateur à l'historique
     st.session_state.messages.append({"role": "user", "content": user_input})
-    
-    # Display user message
+
+    # Étape 2 : Afficher la question dans l'interface
     with st.chat_message("user"):
         st.write(user_input)
     
@@ -296,6 +307,45 @@ Extraits :
         placeholder.write(final_response)
     
     st.session_state.responces.append(final_response)
+
+    # ============================================================
+    # DÉTECTION - Le chatbot a-t-il pu répondre ?
+    # ============================================================
+    unanswered_keywords = [
+        # Français
+        "je ne sais pas", "je n'ai pas", "pas d'information",
+        "ne contient pas", "ne précise pas", "ne précisent pas",
+        "ne mentionne pas", "ne mentionnent pas",
+        "pas trouvé", "aucune information", "je ne trouve pas",
+        "ne contient aucune", "ne contiennent pas",
+        "ne permet pas de répondre", "ne fournit pas",
+        "ne fournissent pas", "pas mentionné",
+        "n'est pas présente dans les documents fournis",
+        "Les informations fournies ne précisent pas",
+        "n'est pas fournie dans les documents",
+        "désolé", "je ne peux pas", "impossible de répondre",
+        "pas disponible", "pas dans les informations",
+        "hors du contexte", "pas de réponse",
+        # Anglais
+        "i don't know", "no information", "i cannot", "i can't",
+        "not found", "no relevant", "sorry",
+        "does not contain", "do not contain",
+        "not mentioned", "not available",
+        "cannot answer", "unable to answer",
+        "does not provide", "not in the provided",
+    ]
+    answered = not any(kw in final_response.lower() for kw in unanswered_keywords)
+
+    # ============================================================
+    # LOGGING - Enregistrer dans SQLite
+    # ============================================================
+    log_question(
+        question=user_input,
+        response=final_response,
+        answered=answered,
+        num_docs_found=len(docs),
+        session_id=st.session_state.session_id,
+    )
 
     # Add assistant message to history
     st.session_state.messages.append({"role": "assistant", "content": final_response})

@@ -15,3 +15,4 @@ data/*.yaml
 evaluation_results/
 evaluation_results_*.csv
 evaluation_results_*.json
+*.log

@@ -93,6 +93,8 @@
 
 ## 3. Modules du Projet
 
+> Le projet est composé de **5 modules principaux** qui fonctionnent ensemble.
+
 ### 3.1 `chatbot.py` — Application Principale
 
 **Fichier** : `chatbot.py` (302 lignes)
@@ -159,7 +161,67 @@ ChromaDB (chroma_db/)
 | `chunk_id` | UUID unique |
 | `last_updated` | Date de dernière modification du fichier source |
 
-### 3.3 Documents Indexés
+### 3.3 `admin_dashboard.py` — Dashboard Administrateur
+
+**Fichier** : `admin_dashboard.py` (563 lignes)
+
+**Responsabilités** :
+- Affichage des métriques en temps réel (total messages, taux de succès, questions sans réponse)
+- Gestion de la Knowledge Base (upload/suppression de fichiers PDF/TXT)
+- Bouton de mise à jour ChromaDB (réingestion)
+- Graphique de tendance des messages par jour
+- Liste des questions sans réponse à examiner
+- Tableau complet des interactions avec filtres
+- Export CSV des logs
+- Affichage des rapports d'évaluation du chatbot
+
+**URL** : `http://localhost:8502` (port séparé du chatbot)
+
+**Sections du dashboard** :
+
+| Section | Description |
+|---------|-------------|
+| **Métriques** | Total messages, taux de succès, questions sans réponse, messages aujourd'hui |
+| **Évaluation** | Scores du chatbot (hybride, RAG, judge) si un rapport JSON existe |
+| **Knowledge Base** | Upload de fichiers, liste des documents, boutons de réingestion |
+| **Tendances** | Graphique en barres du volume de messages sur 7/14/30 jours |
+| **À examiner** | Questions auxquelles le chatbot n'a pas pu répondre |
+| **Interactions** | Dernières 15 interactions avec statut et temps relatif |
+| **Historique** | Tableau complet filtrable de toutes les interactions |
+
+### 3.4 `chat_logger.py` — Enregistrement des Interactions
+
+**Fichier** : `chat_logger.py` (265 lignes)
+
+**Responsabilités** :
+- Création et gestion de la base SQLite (`chat_logs.db`)
+- Enregistrement de chaque interaction (question, réponse, statut, docs trouvés)
+- Fonctions de statistiques pour le dashboard admin
+
+**Fonctions clés** :
+
+| Fonction | Description |
+|----------|-------------|
+| `log_question()` | Enregistre une interaction dans SQLite |
+| `get_total_messages()` | Compte total de messages |
+| `get_success_rate()` | Taux de succès en pourcentage |
+| `get_unanswered_questions()` | Questions sans réponse récentes |
+| `get_messages_per_day()` | Volume par jour (pour le graphique) |
+| `get_all_logs()` | Toutes les interactions (pour l'export CSV) |
+
+### 3.5 `dashboard_styles.py` — Styles CSS du Dashboard
+
+**Fichier** : `dashboard_styles.py`
+
+Contient la constante `DASHBOARD_CSS` avec tout le CSS personnalisé pour le dashboard admin (cartes, badges, couleurs, animations).
+
+### 3.6 `evaluate_chatbot.py` — Script d'Évaluation
+
+**Fichier** : `evaluate_chatbot.py`
+
+Script d'évaluation automatique du chatbot. Pose une série de questions prédéfinies et mesure la qualité des réponses (score hybride, score RAG, score judge). Génère un rapport JSON utilisé par le dashboard.
+
+### 3.7 Documents Indexés
 
 **Dossier** : `data/`
 
@@ -167,8 +229,10 @@ ChromaDB (chroma_db/)
 |---------|--------|-------------|
 | `Réunion_de_rentrée_—_M1_AMIS,_DataScale,_IRS_et_SeCReTS.pdf` | 8.8 Mo | Document principal : UE, notation, compensation, planning |
 | `RI GS Humanités - Sciences du patrimoine.pdf` | 735 Ko | Règlement intérieur complémentaire |
+| `reglement_int.pdf` | 718 Ko | Règlement intérieur supplémentaire |
+| `M1_Info_UVSQ_RAG_cleaned.md` | 12.8 Ko | Document Markdown nettoyé pour le RAG |
 
-**Résultat de l'indexation** : ~26 pages PDF → **51 chunks** dans ChromaDB.
+**Résultat de l'indexation** : ~94 chunks dans ChromaDB avec `BAAI/bge-m3`.
 
 ---
 
@@ -299,19 +363,38 @@ python ingest_database.py
 
 ## 7. Lancer le Projet
 
-### Mode Complet (avec serveur distant)
+### Étape 1 : Indexer les Documents (première fois ou après ajout de fichiers)
 
 ```bash
-# Terminal 1 — Ouvrir le tunnel SSH vers le serveur
-ssh -L 8000:localhost:8000 -L 8001:localhost:8001 abdelkarim@charizard.prism.uvsq.fr
+# Activer l'environnement virtuel
+# Windows PowerShell :
+.\.venv\Scripts\Activate.ps1
+# Linux/Mac :
+source .venv/bin/activate
 
-# Terminal 2 — Lancer l'application
-python -m streamlit run chatbot.py
+# Indexer les documents (reconstruit ChromaDB)
+python ingest_database.py
 ```
 
-L'app sera accessible sur : **http://localhost:8501**
+### Étape 2 : Mode Complet (avec serveur distant)
 
-### Mode Fallback (sans serveur distant)
+```bash
+# Terminal 1 — Ouvrir le tunnel SSH vers le serveur GPU
+ssh -L 8000:localhost:8000 -L 8001:localhost:8001 abdelkarim@charizard.prism.uvsq.fr
+
+# Terminal 2 — Lancer le chatbot (port 8501)
+python -m streamlit run chatbot.py
+
+# Terminal 3 — Lancer le dashboard admin (port 8502)
+python -m streamlit run admin_dashboard.py --server.port 8502
+```
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| **Chatbot** | http://localhost:8501 | Interface de chat pour les étudiants |
+| **Dashboard Admin** | http://localhost:8502 | Métriques, gestion KB, logs |
+
+### Étape 2 (alt) : Mode Fallback (sans serveur distant)
 
 Si le serveur n'est pas accessible, l'app fonctionne quand même :
 - Le LLM utilise **Gemini 2.5 Flash** comme fallback automatique
@@ -319,8 +402,11 @@ Si le serveur n'est pas accessible, l'app fonctionne quand même :
 - Les embeddings et la recherche fonctionnent normalement (tout est local)
 
 ```bash
-# Juste lancer l'app
+# Terminal 1 — Lancer le chatbot
 python -m streamlit run chatbot.py
+
+# Terminal 2 — Lancer le dashboard admin
+python -m streamlit run admin_dashboard.py --server.port 8502
 ```
 
 ### Réindexer les Documents
@@ -332,6 +418,23 @@ python ingest_database.py
 ```
 
 Cela supprime l'ancien index et reconstruit entièrement ChromaDB.
+
+> **Astuce** : Vous pouvez aussi réindexer directement depuis le dashboard admin via le bouton "🚀 Mettre à jour la base de données".
+
+### Commande Rapide (tout-en-un)
+
+```bash
+# Depuis le dossier du projet, avec le venv activé :
+
+# 1. Tunnel SSH (si serveur disponible)
+ssh -L 8000:localhost:8000 -L 8001:localhost:8001 abdelkarim@charizard.prism.uvsq.fr
+
+# 2. Chatbot
+python -m streamlit run chatbot.py
+
+# 3. Dashboard (dans un autre terminal)
+python -m streamlit run admin_dashboard.py --server.port 8502
+```
 
 ---
 
@@ -395,8 +498,12 @@ Cela supprime l'ancien index et reconstruit entièrement ChromaDB.
 ```
 chatbot_M1_AMIS_2025_2026/
 │
-├── chatbot.py              # Application principale (Streamlit + RAG)
+├── chatbot.py              # Application principale (Streamlit + RAG) — port 8501
+├── admin_dashboard.py      # Dashboard administrateur (Streamlit) — port 8502
+├── chat_logger.py          # Module de logging SQLite des interactions
+├── dashboard_styles.py     # Styles CSS pour le dashboard admin
 ├── ingest_database.py      # Pipeline d'ingestion des documents
+├── evaluate_chatbot.py     # Script d'évaluation automatique du chatbot
 ├── requirements.txt        # Dépendances Python
 ├── .env                    # Variables d'environnement (non versionné)
 ├── .env.example            # Template des variables d'environnement
@@ -406,16 +513,18 @@ chatbot_M1_AMIS_2025_2026/
 │
 ├── data/                   # Documents source à indexer
 │   ├── Réunion_de_rentrée_—_M1_AMIS,_DataScale,_IRS_et_SeCReTS.pdf
-│   └── RI GS Humanités - Sciences du patrimoine.pdf
+│   ├── RI GS Humanités - Sciences du patrimoine.pdf
+│   ├── reglement_int.pdf
+│   └── M1_Info_UVSQ_RAG_cleaned.md
 │
-├── chroma_db/              # Index vectoriel ChromaDB (généré)
+├── chroma_db/              # Index vectoriel ChromaDB (généré, non versionné)
 │
 ├── 1_historique.md         # Historique du projet
 ├── 2_glossaire.md          # Glossaire des termes
 ├── 3_architecture.md       # Notes d'architecture
 ├── 4_choix_architecture.md # Justification des choix techniques
 │
-├── chat_logs.db            # Logs des conversations (SQLite)
+├── chat_logs.db            # Logs des conversations SQLite (non versionné)
 ├── comands                 # Notes de commandes utiles
 ├── .venv/                  # Environnement virtuel Python (non versionné)
 └── __pycache__/            # Cache Python (non versionné)
@@ -509,4 +618,4 @@ L'app gardera les 5 premiers chunks par ordre de similarité cosinus au lieu de 
 
 ---
 
-*Documentation générée le 28 mars 2026 — Projet TER M1 AMIS, UVSQ / Université Paris-Saclay*
+*Documentation mise à jour le 30 mars 2026 — Projet TER M1 AMIS, UVSQ / Université Paris-Saclay*

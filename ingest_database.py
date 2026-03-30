@@ -1,8 +1,9 @@
-from langchain_community.document_loaders import PyPDFDirectoryLoader, DirectoryLoader, TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_chroma import Chroma
+import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 from uuid import uuid4
+
 # ================================================================
 # ingest_database.py - Ingestion des documents dans ChromaDB
 # ================================================================
@@ -11,7 +12,7 @@ from uuid import uuid4
 #
 # Processus complet :
 #   1. Lire tous les fichiers PDF et TXT du dossier data/
-#   2. Découper les textes en petits morceaux (chunks) de 3000 caractères
+#   2. Découper les textes en petits morceaux (chunks)
 #   3. Convertir chaque chunk en vecteur numérique (embedding)
 #   4. Stocker les vecteurs dans ChromaDB
 #
@@ -20,339 +21,149 @@ from uuid import uuid4
 #   - Importé depuis admin_dashboard.py pour le bouton "Mettre à jour"
 # ================================================================
 
-# --- Imports ---
-from langchain_community.document_loaders import (
-    PyPDFDirectoryLoader,    # Charge tous les PDF d'un dossier
-    DirectoryLoader,         # Charge des fichiers d'un dossier selon un pattern
-    TextLoader,              # Charge des fichiers texte (.txt)
-)
-from langchain_text_splitters import RecursiveCharacterTextSplitter  # Découpe les textes en chunks
-from langchain_google_genai import GoogleGenerativeAIEmbeddings      # Modèle d'embeddings Google
-from langchain_chroma import Chroma    # Base de données vectorielle
-from uuid import uuid4                 # Génère des identifiants uniques
-import os
-
-# Charger la clé API Google depuis le fichier .env
 from dotenv import load_dotenv
+from langchain_chroma import Chroma
+from langchain_community.document_loaders import DirectoryLoader, PyPDFDirectoryLoader, TextLoader
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-from smart_parcing import SmartChunkingConfig
 load_dotenv()
 
-# configuration
 DATA_PATH = r"data"
 CHROMA_PATH = r"chroma_db"
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
+CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
 
 
+def load_documents():
+    pdf_documents = PyPDFDirectoryLoader(DATA_PATH).load()
+    txt_documents = DirectoryLoader(
+        DATA_PATH,
+        glob="**/*.txt",
+        loader_cls=TextLoader,
+        loader_kwargs={"encoding": "utf-8"},
+        silent_errors=True,
+    ).load()
+    md_documents = DirectoryLoader(
+        DATA_PATH,
+        glob="**/*.md",
+        loader_cls=TextLoader,
+        loader_kwargs={"encoding": "utf-8"},
+        silent_errors=True,
+    ).load()
+    return (
+        pdf_documents + txt_documents + md_documents,
+        len(pdf_documents),
+        len(txt_documents),
+        len(md_documents),
+    )
 
 
-# # initiate the embeddings model (local)
-# embeddings_model = HuggingFaceEmbeddings(
-#     model_name="./models/bge-base-en-v1.5",  # chemin local
-#     model_kwargs={"device": "cpu"}
-# )
-# # initiate the vector store
-# vector_store = Chroma(
-#     collection_name="example_collection",
-#     embedding_function=embeddings_model,
-#     persist_directory=CHROMA_PATH,
-# )
-
-# existing = vector_store.get(include=["metadatas"])
-
-# already_indexed = set()
-
-# for m in existing["metadatas"]:
-#     if "source" in m:
-#         already_indexed.add(m["source"])
-
-# print(f"📚 Documents déjà indexés : {len(already_indexed)}")
+def extract_section(text: str) -> str:
+    for line in text.splitlines():
+        cleaned = " ".join(line.split())
+        if 6 <= len(cleaned) <= 120:
+            return cleaned
+    return ""
 
 
-
-# # loading PDFc:\Users\idir\Downloads\Réunion_de_rentrée_—_M1_AMIS,_DataScale,_IRS_et_SeCReTS.pdf documents
-# pdf_loader = PyPDFDirectoryLoader(DATA_PATH)
-# pdf_documents = pdf_loader.load()
-
-
-# # loading plain text documents
-# txt_loader = DirectoryLoader(DATA_PATH, glob="**/*.txt", loader_cls=TextLoader)
-# txt_documents = txt_loader.load()
-
-
-# markdoun_loader = DirectoryLoader(DATA_PATH, glob="**/*.md", loader_cls=TextLoader)
-# markdown_documents = markdoun_loader.load()
-# # combine both document types
-# raw_documents = pdf_documents + txt_documents + markdown_documents
-
-
-
-# new_documents = [
-#     doc for doc in raw_documents
-#     if doc.metadata.get("source") not in already_indexed
-# ]
-
-# new_sources = set(doc.metadata.get("source") for doc in new_documents)
+def enrich_chunk(doc, chunk_id: str):
+    source = doc.metadata.get("source", "")
+    source_path = Path(source) if source else None
+    source_name = source_path.name if source_path else "Unknown"
+    page = doc.metadata.get("page")
+    if isinstance(page, int):
+        doc.metadata["page"] = page + 1
+    if source_path and source_path.exists():
+        doc.metadata["last_updated"] = datetime.fromtimestamp(
+            source_path.stat().st_mtime
+        ).isoformat(timespec="seconds")
+    doc.metadata["source_name"] = source_name
+    doc.metadata["title"] = source_path.stem if source_path else "Unknown"
+    doc.metadata["section"] = doc.metadata.get("section") or extract_section(doc.page_content)
+    doc.metadata["chunk_id"] = chunk_id
 
 
-# smart = SmartChunkingConfig()
-
-# for source in new_sources:
-#     print(f"📄 Génération config pour : {source}")
-#     smart.generate(source)  # appelé une seule fois par fichier
-
-
-
-# import yaml
-# import os
-
-# all_chunks = []
-
-# for source in new_sources:
-#     print(f"📄 Processing: {source}")
-
-#     yaml_path = os.path.splitext(source)[0] + "_chunking_config.yaml"
-
-#     # Générer la config si elle n'existe pas encore
-#     if not os.path.exists(yaml_path):
-#         smart.generate(source)
-
-#     # Charger la config
-#     with open(yaml_path, "r", encoding="utf-8") as f:
-#         config = yaml.safe_load(f)
-
-#     # Splitter les docs de cette source
-#     text_splitter = RecursiveCharacterTextSplitter(
-#         separators=config["separators"],
-#         chunk_size=config["chunk_size"],
-#         chunk_overlap=config["chunk_overlap"],
-#         is_separator_regex=config.get("is_separator_regex", False)
-#     )
-
-#     docs_for_source = [d for d in new_documents if d.metadata.get("source") == source]
-#     chunks = text_splitter.split_documents(docs_for_source)
-#     all_chunks.extend(chunks)
-#     print(f"   → {len(chunks)} chunks créés")
-
-# # Ajouter à ChromaDB
-# uuids = [str(uuid4()) for _ in range(len(all_chunks))]
-# vector_store.add_documents(documents=all_chunks, ids=uuids)
-# print(f"✅ {len(all_chunks)} chunks ajoutés.")
+def build_chunks(raw_documents):
+    text_splitter = RecursiveCharacterTextSplitter(
+        separators=[
+            "\n# ",
+            "\n## ",
+            "\nArticle ",
+            "\nARTICLE ",
+            "\nTitre ",
+            "\nTITRE ",
+            "\n\n",
+            "\n",
+            ". ",
+            " ",
+        ],
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+    )
+    return text_splitter.split_documents(raw_documents)
 
 
-
-
-
-# # # splitting the document
-# # text_splitter = RecursiveCharacterTextSplitter(
-# #     separators=[
-# #         r"\n\n(?=TITRE \d+ – [^\n]+)",
-# #         r"\n\n(?=Article \d+\.(?!\d|[a-z])\s|PREAMBULE\n)",
-# #         r"\n\n(?=Article \d+\.[a-zA-Z0-9]+\.?\s)",
-# #         r"\n\n",
-# #         r"\n",
-# #         r"\. ",
-# #         r"\? ",
-# #         r"! ",
-# #         r"; ",
-# #         r": ",
-# #         r", ",
-# #         r" ",
-# #         r""
-# #     ],
-# #     chunk_size=3000,
-# #     chunk_overlap=300,
-# #     is_separator_regex=True
-# # )
-# # # creating the chunks
-# # chunks = text_splitter.split_documents(raw_documents)
-
-# # # creating unique ID's
-# # uuids = [str(uuid4()) for _ in range(len(chunks))]
-
-# # # adding chunks to vector store
-# # vector_store.add_documents(documents=chunks, ids=uuids)
-
-
+def build_vector_store():
+    return get_vector_store()
 
 
 def get_embeddings_model():
-    """
-    Crée et retourne le modèle d'embeddings Google.
-    
-    Un embedding = transformer du texte en une liste de nombres (vecteur).
-    Exemple : "Bonjour" → [0.12, -0.45, 0.78, ...] (768 nombres)
-    
-    Deux textes similaires auront des vecteurs proches.
-    C'est comme ça que le chatbot trouve les documents pertinents.
-    """
-    return GoogleGenerativeAIEmbeddings(model="models/gemini-embedding-001")
-
-
+    return HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True},
+    )
 
 
 def get_vector_store(embeddings_model=None):
-    """
-    Crée et retourne la connexion à la base ChromaDB.
-    
-    ChromaDB est une base de données spécialisée pour stocker des vecteurs.
-    Elle permet de chercher les vecteurs les plus similaires à une requête.
-    
-    Args:
-        embeddings_model: Le modèle d'embeddings à utiliser.
-                         Si None, on en crée un nouveau.
-    
-    Returns:
-        Un objet Chroma connecté à la base de données.
-    """
     if embeddings_model is None:
         embeddings_model = get_embeddings_model()
     return Chroma(
-        collection_name="example_collection",   # Nom de la collection dans ChromaDB
-        embedding_function=embeddings_model,    # Le modèle pour convertir texte → vecteur
-        persist_directory=CHROMA_PATH,          # Dossier de stockage sur disque
+        collection_name="example_collection",
+        embedding_function=embeddings_model,
+        persist_directory=CHROMA_PATH,
     )
 
 
 def ingest_all_documents():
-    """
-    Fonction principale : charge TOUS les documents du dossier data/
-    et les ajoute dans la base vectorielle ChromaDB.
-    
-    Étapes :
-        1. Charger les PDF → liste de documents
-        2. Charger les TXT → liste de documents
-        3. Combiner les deux listes
-        4. Découper en chunks de 3000 caractères
-        5. Générer un ID unique pour chaque chunk
-        6. Ajouter les chunks dans ChromaDB
-    
-    Returns:
-        int : Le nombre de chunks créés et ajoutés.
-    """
+    raw_documents, pdf_count, txt_count, md_count = load_documents()
+    if not raw_documents:
+        raise RuntimeError(f"Aucun document trouve dans {DATA_PATH}.")
 
-    
+    chunks = build_chunks(raw_documents)
+    shutil.rmtree(CHROMA_PATH, ignore_errors=True)
+    vector_store = build_vector_store()
 
+    uuids = []
+    for chunk in chunks:
+        chunk_id = str(uuid4())
+        enrich_chunk(chunk, chunk_id)
+        uuids.append(chunk_id)
 
-    embeddings_model = get_embeddings_model()
-    vector_store = get_vector_store(embeddings_model)
-
-    # --- Étape 1 : Charger tous les fichiers PDF du dossier data/ ---
-    pdf_loader = PyPDFDirectoryLoader(DATA_PATH)
-    pdf_documents = pdf_loader.load()  # Retourne une liste de Document(page_content, metadata)
-
-    # --- Étape 2 : Charger tous les fichiers TXT du dossier data/ ---
-    # glob="**/*.txt" = chercher récursivement tous les fichiers .txt
-    txt_loader = DirectoryLoader(DATA_PATH, glob="**/*.txt", loader_cls=TextLoader)
-    txt_documents = txt_loader.load()
-    
-    # --- Étape 3 : Combiner PDF + TXT ---
-    raw_documents = pdf_documents + txt_documents
-
-    #change here
-
-
-
-    
-    existing = vector_store.get(include=["metadatas"])
-
-    already_indexed = set()
-
-    
-    
-    for m in existing["metadatas"]:
-        if "source" in m:
-            already_indexed.add(m["source"])
-
-    print(f"📚 Documents déjà indexés : {len(already_indexed)}")
-
-
-    new_documents = [
-        doc for doc in raw_documents
-        if doc.metadata.get("source") not in already_indexed
-    ]
-
-    new_sources = set(doc.metadata.get("source") for doc in new_documents)
-
-
-    smart = SmartChunkingConfig()
-
-    for source in new_sources:
-        print(f"📄 Génération config pour : {source}")
-        smart.generate(source)  # appelé une seule fois par fichier
-
-
-
-    import yaml
-    import os
-
-    all_chunks = []
-
-    for source in new_sources:
-        print(f"📄 Processing: {source}")
-
-        yaml_path = os.path.splitext(source)[0] + "_chunking_config.yaml"
-
-        # Générer la config si elle n'existe pas encore
-        if not os.path.exists(yaml_path):
-            smart.generate(source)
-
-        # Charger la config
-        with open(yaml_path, "r", encoding="utf-8") as f:
-            config = yaml.safe_load(f)
-
-        # Splitter les docs de cette source
-        text_splitter = RecursiveCharacterTextSplitter(
-            separators=config["separators"],
-            chunk_size=config["chunk_size"],
-            chunk_overlap=config["chunk_overlap"],
-            is_separator_regex=config.get("is_separator_regex", False)
-        )
-
-        docs_for_source = [d for d in new_documents if d.metadata.get("source") == source]
-        chunks = text_splitter.split_documents(docs_for_source)
-        all_chunks.extend(chunks)
-        print(f"   → {len(chunks)} chunks créés")
-
-    # Ajouter à ChromaDB
-    uuids = [str(uuid4()) for _ in range(len(all_chunks))]
-    vector_store.add_documents(documents=all_chunks, ids=uuids)
-    print(f"✅ {len(all_chunks)} chunks ajoutés.")
-
-
-
+    vector_store.add_documents(documents=chunks, ids=uuids)
+    print(
+        f"Documents charges : {len(raw_documents)} "
+        f"(PDF/pages={pdf_count}, txt={txt_count}, md={md_count})"
+    )
+    print(f"Chunks indexes : {len(chunks)}")
+    print(f"Embedding model : {EMBEDDING_MODEL}")
+    print(f"Index reconstruit dans : {CHROMA_PATH}")
+    return len(chunks)
 
 
 def clear_and_reingest(reset_vector_store=False):
-    """
-    Vide complètement la base ChromaDB puis réingère tous les documents.
-    
-    Pourquoi vider d'abord ?
-    Si on ajoute simplement les nouveaux documents, les anciens restent.
-    → Risque de doublons et de données obsolètes.
-    En vidant puis en réingérant, on est sûr d'avoir une base propre.
-    
-    Appelée depuis admin_dashboard.py quand l'admin clique sur
-    "Mettre à jour la base de données".
-    
-    Returns:
-        int : Le nombre de chunks créés après réingestion.
-    """
-    embeddings_model = get_embeddings_model()
-
-    # Étape 1 : Supprimer tous les documents de la collection
-    vector_store = get_vector_store(embeddings_model)
     if reset_vector_store:
-        vector_store.reset_collection()  # Vide la collection ChromaDB
-
-    # Étape 2 : Recharger tous les documents du dossier data/
+        shutil.rmtree(CHROMA_PATH, ignore_errors=True)
+        print(f"Index supprime dans : {CHROMA_PATH}")
+        return 0
     return ingest_all_documents()
 
 
-# ================================================================
-# EXÉCUTION DIRECTE
-# ================================================================
-# Ce bloc s'exécute UNIQUEMENT si on lance : python ingest_database.py
-# Il ne s'exécute PAS quand on importe le fichier (from ingest_database import ...)
+def main():
+    ingest_all_documents()
+
+
 if __name__ == "__main__":
-    nb_chunks = ingest_all_documents()
-    print(f"{nb_chunks} chunks ajoutés à la base de données.")
+    main()

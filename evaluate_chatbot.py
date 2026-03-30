@@ -10,17 +10,19 @@
 # ================================================================
 
 import argparse
-import json
 import csv
-import re
+import json
 import math
+import os
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Tuple
 import numpy as np
 
 from dotenv import load_dotenv
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_chroma import Chroma
 from unanswered_detection import is_unanswered_response
 
@@ -31,16 +33,17 @@ load_dotenv()
 # ================================================================
 CHROMA_PATH = "chroma_db"
 COLLECTION_NAME = "example_collection"
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 
 
 # ================================================================
 # CHARGEMENT DES MODÈLES
 # ================================================================
 
-def load_models() -> Tuple[ChatGoogleGenerativeAI, Chroma, GoogleGenerativeAIEmbeddings]:
+def load_models() -> Tuple[ChatGoogleGenerativeAI, Chroma, HuggingFaceEmbeddings]:
     """
-    Charge les modèles Google Gemini et la base ChromaDB.
-    Utilise le meme modèle d'embeddings que l'ingestion.
+    Charge le modèle Gemini, la base ChromaDB et le même
+    modèle d'embeddings Hugging Face que l'ingestion locale.
     
     Returns:
         Tuple[LLM, vector_store, embeddings]
@@ -55,8 +58,10 @@ def load_models() -> Tuple[ChatGoogleGenerativeAI, Chroma, GoogleGenerativeAIEmb
     )
     
     # Important: doit matcher l'embedding utilisé dans ingest_database.py
-    embeddings_model = GoogleGenerativeAIEmbeddings(
-        model="models/gemini-embedding-001"
+    embeddings_model = HuggingFaceEmbeddings(
+        model_name=EMBEDDING_MODEL,
+        model_kwargs={"device": "cpu"},
+        encode_kwargs={"normalize_embeddings": True},
     )
     
     # Base de données vectorielle
@@ -154,7 +159,7 @@ def is_unanswered(response: str) -> bool:
 def context_relevance_score(
     question: str,
     retrieved_docs: List,
-    embeddings_model: GoogleGenerativeAIEmbeddings
+    embeddings_model: HuggingFaceEmbeddings
 ) -> float:
     """
     Score de pertinence du contexte (0-100).
@@ -170,8 +175,10 @@ def context_relevance_score(
         
         # Calculer la similarité avec chaque document
         similarities = []
-        for doc in retrieved_docs:
-            doc_embedding = embeddings_model.embed_query(doc.page_content)
+        doc_embeddings = embeddings_model.embed_documents(
+            [doc.page_content for doc in retrieved_docs]
+        )
+        for doc_embedding in doc_embeddings:
             doc_vec = np.array(doc_embedding)
             sim = cosine_similarity(question_vec, doc_vec)
             similarities.append(sim)
@@ -247,7 +254,7 @@ def calculate_rag_score(
     question: str,
     response: str,
     retrieved_docs: List,
-    embeddings_model: GoogleGenerativeAIEmbeddings
+    embeddings_model: HuggingFaceEmbeddings
 ) -> Dict[str, float]:
     """
     Calcule les 3 métriques RAG et leur moyenne.
@@ -379,7 +386,7 @@ def evaluate_question(
     question: str,
     llm: ChatGoogleGenerativeAI,
     vector_store: Chroma,
-    embeddings_model: GoogleGenerativeAIEmbeddings,
+    embeddings_model: HuggingFaceEmbeddings,
 ) -> Dict:
     """
     Évalue une question complètement.

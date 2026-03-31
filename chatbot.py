@@ -26,6 +26,77 @@ st.markdown("""
     <style>
     .main { padding-top: 0; }
     .stChatMessage { background-color: #f0f2f6; border-radius: 10px; padding: 15px; }
+
+    /* Suggestion chips */
+    .suggestion-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 20px 0 30px 0;
+        justify-content: center;
+    }
+
+    /* Voice button */
+    .voice-btn-container {
+        position: fixed;
+        bottom: 28px;
+        right: 40px;
+        z-index: 9999;
+    }
+    .voice-btn {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid #e0e0e0;
+        background: white;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        transition: all 0.3s ease;
+        font-size: 20px;
+    }
+    .voice-btn:hover {
+        border-color: #ff4b4b;
+        box-shadow: 0 4px 16px rgba(255,75,75,0.3);
+        transform: scale(1.1);
+    }
+    .voice-btn.recording {
+        border-color: #ff4b4b;
+        background: #fff0f0;
+        animation: pulse 1.5s infinite;
+    }
+    @keyframes pulse {
+        0% { box-shadow: 0 0 0 0 rgba(255,75,75,0.4); }
+        70% { box-shadow: 0 0 0 12px rgba(255,75,75,0); }
+        100% { box-shadow: 0 0 0 0 rgba(255,75,75,0); }
+    }
+
+    /* Markdown table styling */
+    .stMarkdown table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 12px 0;
+        font-size: 14px;
+    }
+    .stMarkdown th {
+        background-color: #f0f2f6;
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 2px solid #d0d5dd;
+        font-weight: 600;
+    }
+    .stMarkdown td {
+        padding: 8px 14px;
+        border-bottom: 1px solid #eaecf0;
+    }
+    .stMarkdown tr:nth-child(even) {
+        background-color: #f9fafb;
+    }
+    .stMarkdown tr:hover {
+        background-color: #f0f4ff;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,6 +117,16 @@ GENERATION_MAX_TOKENS = int(os.getenv("GENERATION_MAX_TOKENS", "800"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
 VLLM_TIMEOUT = int(os.getenv("VLLM_TIMEOUT", "10"))
 RERANKING_ENABLED = os.getenv("RERANKING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+
+# --- Suggestion chips for new conversations ---
+SUGGESTIONS = [
+    "📅 Quand a lieu le jury du premier semestre ?",
+    "📚 Quelles sont les UE du BCC Socle fondamental ?",
+    "🎓 Comment fonctionne la compensation entre les BCC ?",
+    "📝 Comment justifier une absence ?",
+    "💼 Quels sont les contacts de la scolarité ?",
+    "🔄 Comment conserver une note d'une session à l'autre ?",
+]
 
 
 def _probe(url: str, timeout: int = 3) -> bool:
@@ -230,20 +311,155 @@ st.markdown("*Ask anything - I'll answer based on the knowledge base*")
 # --- Afficher l'historique des messages ---
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
-        st.write(message["content"])
+        st.markdown(message["content"])
 
-# --- Zone de saisie du chat ---
-if user_input := st.chat_input("Type your question here..."):
+# ================================================================
+# SUGGESTIONS — Affiché quand la conversation est vide
+# ================================================================
+if not st.session_state.messages:
+    st.markdown("#### 💡 Suggestions pour commencer")
+    cols = st.columns(3)
+    for idx, suggestion in enumerate(SUGGESTIONS):
+        col = cols[idx % 3]
+        with col:
+            if st.button(suggestion, key=f"suggestion_{idx}", use_container_width=True):
+                st.session_state["_pending_input"] = suggestion
+                st.rerun()
 
+# ================================================================
+# VOICE-TO-TEXT — Web Speech API (browser native, best quality)
+# ================================================================
+# The iframe JS injects the mic button directly into the parent
+# Streamlit page's DOM. The CSS for .voice-btn-container / .voice-btn
+# is already defined in the st.markdown <style> block above.
+VOICE_HTML = """
+<script>
+(function() {
+    var parentDoc = window.parent.document;
+
+    // Prevent duplicates on Streamlit rerun
+    if (parentDoc.getElementById('voiceBtnContainer')) return;
+
+    // Create the floating button in the PARENT page
+    var container = parentDoc.createElement('div');
+    container.className = 'voice-btn-container';
+    container.id = 'voiceBtnContainer';
+
+    var btn = parentDoc.createElement('button');
+    btn.className = 'voice-btn';
+    btn.id = 'voiceBtn';
+    btn.title = 'Cliquez pour parler';
+    btn.textContent = '🎤';
+
+    container.appendChild(btn);
+    parentDoc.body.appendChild(container);
+
+    // --- Speech Recognition ---
+    var recognition = null;
+    var isRecording = false;
+
+    function getChatInput() {
+        return parentDoc.querySelector(
+            'textarea[data-testid="stChatInputTextArea"]'
+        );
+    }
+
+    function setStreamlitInput(textarea, text) {
+        var nativeSetter = Object.getOwnPropertyDescriptor(
+            window.parent.HTMLTextAreaElement.prototype, 'value'
+        ).set;
+        nativeSetter.call(textarea, text);
+        textarea.dispatchEvent(new Event('input', { bubbles: true }));
+        textarea.dispatchEvent(new Event('change', { bubbles: true }));
+        textarea.focus();
+    }
+
+    btn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        var SpeechAPI = window.parent.SpeechRecognition
+                     || window.parent.webkitSpeechRecognition
+                     || window.SpeechRecognition
+                     || window.webkitSpeechRecognition;
+        if (!SpeechAPI) {
+            window.parent.alert(
+                'La reconnaissance vocale n\\'est pas supportée.\\nUtilisez Chrome ou Edge.'
+            );
+            return;
+        }
+
+        if (isRecording && recognition) {
+            recognition.stop();
+            return;
+        }
+
+        recognition = new SpeechAPI();
+        recognition.lang = 'fr-FR';
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+        recognition.continuous = true;
+
+        recognition.onstart = function() {
+            isRecording = true;
+            btn.classList.add('recording');
+            btn.textContent = '⏹️';
+            btn.title = 'Écoute en cours… Cliquez pour arrêter';
+        };
+
+        recognition.onresult = function(event) {
+            var transcript = '';
+            for (var i = 0; i < event.results.length; i++) {
+                transcript += event.results[i][0].transcript;
+            }
+            var chatInput = getChatInput();
+            if (chatInput && transcript) {
+                setStreamlitInput(chatInput, transcript);
+            }
+        };
+
+        recognition.onerror = function(event) {
+            if (event.error !== 'no-speech') {
+                isRecording = false;
+                btn.classList.remove('recording');
+                btn.textContent = '🎤';
+                btn.title = 'Cliquez pour parler';
+            }
+        };
+
+        recognition.onend = function() {
+            isRecording = false;
+            btn.classList.remove('recording');
+            btn.textContent = '🎤';
+            btn.title = 'Cliquez pour parler';
+        };
+
+        recognition.start();
+    });
+})();
+</script>
+"""
+st.components.v1.html(VOICE_HTML, height=0)
+
+# ================================================================
+# HANDLE INPUT — from chat_input or suggestion click
+# ================================================================
+user_input = st.chat_input("Type your question here...")
+
+# Check for pending input from suggestion click
+if not user_input and st.session_state.get("_pending_input"):
+    user_input = st.session_state.pop("_pending_input")
+
+if user_input:
     # Étape 1 : Ajouter la question de l'utilisateur à l'historique
     st.session_state.messages.append({"role": "user", "content": user_input})
 
     # Étape 2 : Afficher la question dans l'interface
     with st.chat_message("user"):
-        st.write(user_input)
-    
+        st.markdown(user_input)
+
     st.session_state.questions.append(user_input)
-    
+
 
     # Retrieve and rerank
     docs = rerank(user_input, retriever.invoke(user_input))
@@ -266,6 +482,8 @@ Règles :
 - Réponds en français, sauf si l'utilisateur écrit clairement dans une autre langue.
 - Reste concis, fiable et utile.
 - Cite les sources dans la réponse sous la forme [nom_fichier, p. X] quand elles sont disponibles.
+- **Quand l'information se prête à une présentation tabulaire (listes d'UE, calendrier, contacts, notes, etc.), utilise obligatoirement un tableau Markdown** avec des colonnes pertinentes (ex. : | UE | Code | Semestre |).
+- Utilise des listes à puces ou numérotées quand c'est approprié pour la lisibilité.
 
 Question :
 {user_input}
@@ -276,7 +494,7 @@ Historique utile :
 Extraits :
 {knowledge}
     """.strip()
-    
+
     # Display assistant response with streaming
     with st.chat_message("assistant"):
         placeholder = st.empty()
@@ -290,22 +508,22 @@ Extraits :
             try:
                 for chunk in active_llm.stream(rag_prompt):
                     response += chunk.content
-                    placeholder.write(response)
+                    placeholder.markdown(response)
                 final_response = response.strip() or final_response
             except Exception:
                 if active_llm is llm and llm_fallback is not None:
                     response = ""
                     for chunk in llm_fallback.stream(rag_prompt):
                         response += chunk.content
-                        placeholder.write(response)
+                        placeholder.markdown(response)
                     final_response = response.strip() or final_response
                 else:
                     final_response = "Le serveur vLLM n'est pas disponible pour le moment."
 
         if sources_block:
             final_response = f"{final_response}\n\nSources consultees :\n{sources_block}"
-        placeholder.write(final_response)
-    
+        placeholder.markdown(final_response)
+
     st.session_state.responces.append(final_response)
 
     # ============================================================

@@ -30,24 +30,24 @@
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                    UTILISATION (à chaque question)                            │
+│                    UTILISATION (à chaque question)                           │
 │                                                                              │
-│  L'utilisateur ouvre le chatbot et pose une question                          │
+│  L'utilisateur ouvre le chatbot et pose une question                         │
 │  "Quels sont les masters disponibles ?"                                      │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 1 - Recherche dans ChromaDB                             │
+│  chatbot.py : Étape 1 - Recherche dans ChromaDB                              │
 │    → La question est transformée en vecteur (même modèle d'embedding)        │
 │    → ChromaDB compare ce vecteur avec tous les chunks stockés                │
 │    → Retourne les N documents les plus proches (les plus pertinents)         │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 2 - Génération de la réponse (LLM / IA)                │
+│  chatbot.py : Étape 2 - Génération de la réponse (LLM / IA)                  │
 │    → Envoie au modèle IA : "Voici les documents trouvés + la question"       │
 │    → Le modèle génère une réponse en langage naturel                         │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 3 - Détection succès / échec                            │
+│  chatbot.py : Étape 3 - Détection succès / échec                             │
 │    → Parcourt la réponse pour chercher des mots-clés d'échec :               │
 │      "je ne sais pas", "aucune information", "désolé", "no information"...   │
 │    → any(kw in response.lower() for kw in unanswered_keywords)               │
@@ -55,12 +55,12 @@
 │    → Si aucun mot-clé   → answered = True  (✅ répondu)                      │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 4 - Enregistrement dans SQLite                          │
+│  chatbot.py : Étape 4 - Enregistrement dans SQLite                           │
 │    → Appelle chat_logger.py : log_question()                                 │
 │      INSERT INTO chat_logs VALUES (                                          │
 │        timestamp  = "2026-03-10 14:30:00",                                   │
 │        question   = "Quels sont les masters ?",                              │
-│        response   = "Voici les masters disponibles...",                       │
+│        response   = "Voici les masters disponibles...",                      │
 │        answered   = 1,           (1 = oui, 0 = non)                          │
 │        num_docs   = 3,           (3 documents trouvés)                       │
 │        session_id = "abc123"                                                 │
@@ -70,12 +70,12 @@
 │  chat_logs.db (fichier SQLite) ← la ligne est sauvegardée                    │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 5 - Affichage                                           │
+│  chatbot.py : Étape 5 - Affichage                                            │
 │    → La réponse est affichée à l'utilisateur dans l'interface Streamlit      │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
-│                     DASHBOARD ADMIN (consultation)                            │
+│                     DASHBOARD ADMIN (consultation)                           │
 │                                                                              │
 │  L'admin ouvre admin_dashboard.py → Streamlit exécute tout le code           │
 │        │                                                                     │
@@ -92,27 +92,27 @@
 │      → SELECT COUNT(*) FROM chat_logs WHERE answered = 0     → ex: 30        │
 │                                                                              │
 │    get_success_rate()                                                        │
-│      → Python : (120 / 150) × 100 = 80.0%                                   │
+│      → Python : (120 / 150) × 100 = 80.0%                                    │
 │                                                                              │
 │    get_messages_today()                                                      │
-│      → SELECT COUNT(*) WHERE DATE(timestamp) = DATE('now')   → ex: 5        │
+│      → SELECT COUNT(*) WHERE DATE(timestamp) = DATE('now')   → ex: 5         │
 │                                                                              │
 │    get_messages_per_day(7)                                                   │
 │      → SELECT DATE(timestamp), COUNT(*) GROUP BY DATE(timestamp)             │
-│      → [("2026-03-04", 12), ("2026-03-05", 8), ...]                         │
+│      → [("2026-03-04", 12), ("2026-03-05", 8), ...]                          │
 │      → Affiché en graphique barres via st.bar_chart()                        │
 │                                                                              │
 │    get_unanswered_questions(10)                                              │
-│      → SELECT * WHERE answered = 0 ORDER BY timestamp DESC LIMIT 10         │
-│      → Affiché dans la zone scrollable "⚠️ À examiner"                      │
+│      → SELECT * WHERE answered = 0 ORDER BY timestamp DESC LIMIT 10          │
+│      → Affiché dans la zone scrollable "⚠️ À examiner"                       │
 │                                                                              │
 │    get_recent_interactions(15)                                               │
-│      → SELECT * ORDER BY timestamp DESC LIMIT 15                            │
+│      → SELECT * ORDER BY timestamp DESC LIMIT 15                             │
 │      → Affiché avec points verts/jaunes + temps relatif                      │
 │                                                                              │
 │    get_all_logs()                                                            │
 │      → SELECT * FROM chat_logs ORDER BY timestamp DESC                       │
-│      → Affiché dans le tableau "📋 Historique complet"                       │
+│      → Affiché dans le tableau "📋 Historique complet"                      │
 │      → Converti en CSV via pandas pour le bouton "📥 Exporter"              │
 │        │                                                                     │
 │        ▼                                                                     │
@@ -131,11 +131,39 @@
 │  6. ChromaDB contient maintenant les nouveaux documents                      │
 │  7. Le chatbot peut désormais répondre à ces questions → taux de succès ↑    │
 └──────────────────────────────────────────────────────────────────────────────┘
+
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                   ÉVALUATION OFFLINE DU CHATBOT                              │
+│                                                                              │
+│  L'admin/l'équipe lance le script evaluate_chatbot.py                        │
+│  (questions depuis evaluation_chatbot/question.md)                           │
+│        │                                                                     │
+│        ▼                                                                     │
+│  evaluate_chatbot.py : Pour chaque question                                  │
+│    1. Recherche top-k chunks dans ChromaDB                                   │
+│    2. Génère une réponse via LLM                                             │
+│    3. Détecte si réponse valide ou non (answered True/False)                 │
+│    4. Calcule score RAG (pertinence, couverture, citations)                  │
+│    5. Calcule score Judge LLM (fidélité, pertinence, complétude)             │
+│    6. Combine en score hybride                                               │
+│        │                                                                     │
+│        ▼                                                                     │
+│  Sauvegarde automatique :                                                    │
+│    evaluation_results_YYYYMMDD_HHMMSS.json                                   │
+│    evaluation_results_YYYYMMDD_HHMMSS.csv                                    │
+│        │                                                                     │
+│        ▼                                                                     │
+│  admin_dashboard.py : section "🧪 Évaluation du chatbot"                    │
+│    → load_evaluation_reports() lit les fichiers JSON                         │
+│    → L'admin choisit un rapport dans une liste                               │
+│    → Affiche métriques : nb questions, taux de réponse, score global/hybride │
+│    → Affiche tableau Q/R évaluées + export CSV                               │
+└──────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Les 3 fichiers et leur rôle
+## Les 5 fichiers et leur rôle
 
 | Fichier | Rôle | Base de données |
 |---|---|---|
@@ -143,6 +171,7 @@
 | **chat_logger.py** | Fonctions SQL (écriture + lecture) | Lit et écrit dans SQLite (`chat_logs.db`) |
 | **admin_dashboard.py** | Interface admin + stats + gestion fichiers | Lit SQLite / Gère `data/` + ChromaDB |
 | **ingest_database.py** | Vectorisation des documents | Lit `data/` / Écrit dans ChromaDB |
+| **evaluate_chatbot.py** | Évaluation automatique des réponses (RAG + Judge + hybride) | Lit ChromaDB / Génère `evaluation_results_*.json` et `.csv` |
 
 ## Les 2 bases de données
 
@@ -167,6 +196,16 @@
 | ✅ **Taux de succès** | Le pourcentage de questions auxquelles le chatbot a trouvé une réponse |
 | ⚠️ **Questions sans réponse** | Le nombre de questions où le chatbot n'a pas pu répondre |
 | 📈 **Messages aujourd'hui** | Le nombre de questions posées uniquement aujourd'hui |
+
+### 2 bis. Évaluation du chatbot (section dédiée)
+- **Sélecteur de rapport** : la section "🧪 Évaluation du chatbot" scanne les fichiers `.json` d'évaluation et permet d'en choisir un.
+- **4 métriques affichées** :
+    - Questions évaluées
+    - Taux de réponse
+    - Score global
+    - Score hybride
+- **Tableau détaillé** : affiche les Q/R évaluées avec colonnes comme Question, Réponse, Répondu, Docs trouvés, Score hybride, Score judge, Score RAG.
+- **Export CSV** : bouton pour exporter le tableau d'évaluation affiché.
 
 ### 3. Knowledge Base — Gestion des documents
 
@@ -200,6 +239,44 @@
 - Un tableau interactif avec toutes les interactions (triable, scrollable).
 - Filtres radio : "Tous", "Répondues", "Sans réponse" pour filtrer les lignes.
 - Colonnes : Date, Question, Réponse, Répondu (✅/❌), Docs trouvés.
+
+---
+
+## Détail technique : Évaluation du chatbot (evaluate_chatbot.py)
+
+### Étape 1 : Lancer l'évaluation
+```bash
+python evaluate_chatbot.py
+```
+Options possibles :
+- `--input-file` : choisir un autre fichier de questions
+- `--max-questions` : limiter le nombre de questions évaluées
+
+### Étape 2 : Calcul des scores
+Pour chaque question, le script produit :
+- `answered` : réponse valable ou non
+- `rag_score` : score RAG (pertinence contexte, couverture, citations)
+- `judge_score` : score LLM-as-Judge (fidélité, pertinence, complétude)
+- `hybrid_score` : combinaison pondérée RAG + Judge, avec pénalité si non-réponse
+
+### Étape 3 : Fichiers générés
+Le script enregistre automatiquement :
+- `evaluation_results_YYYYMMDD_HHMMSS.json`
+- `evaluation_results_YYYYMMDD_HHMMSS.csv`
+
+---
+
+## Détail technique : Affichage de l'évaluation dans le Dashboard Admin
+
+Dans `admin_dashboard.py`, la section "🧪 Évaluation du chatbot" :
+1. Appelle `load_evaluation_reports()` qui parcourt les `.json` du projet.
+2. Normalise le format (dict avec `results` ou liste directe).
+3. Trie les rapports par date de modification (le plus récent en haut).
+4. Affiche les métriques globales avec `st.metric`.
+5. Affiche le détail dans `st.dataframe`.
+6. Propose un export CSV des questions/réponses évaluées.
+
+Cette section permet d'analyser la **qualité des réponses** (évaluation offline) en plus des **statistiques d'usage** (logs SQLite en temps réel).
 
 ---
 

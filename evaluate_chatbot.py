@@ -25,6 +25,7 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 
 from unanswered_detection import is_unanswered_response
+from llm_backends import build_all_openai_compat_chat_list, generation_llm_order
 
 load_dotenv()
 
@@ -202,10 +203,14 @@ def is_unanswered(response: str) -> bool:
     return is_unanswered_response(response, min_word_count=0)
 
 
-def get_active_llm(primary_llm: Any, fallback_llm: Any) -> Any:
-    if is_vllm_up():
-        return primary_llm
-    return fallback_llm if fallback_llm is not None else primary_llm
+def get_judge_llm(primary_llm: Any, openai_compat_llms: Any, fallback_llm: Any) -> Any:
+    order = generation_llm_order(
+        vllm_reachable=is_vllm_up(),
+        vllm_llm=primary_llm,
+        openai_compat_llms=openai_compat_llms,
+        tertiary_llm=fallback_llm,
+    )
+    return order[0] if order else primary_llm
 
 
 def build_chatbot_prompt(question: str, docs) -> str:
@@ -232,22 +237,29 @@ Extraits :
     """.strip()
 
 
-def generate_chatbot_response(question: str, docs, primary_llm: Any, fallback_llm: Any) -> str:
+def generate_chatbot_response(
+    question: str,
+    docs,
+    primary_llm: Any,
+    openai_compat_llms: Any,
+    fallback_llm: Any,
+) -> str:
     rag_prompt = build_chatbot_prompt(question, docs)
     default_response = "Je n'ai pas trouve cette information dans les documents disponibles."
 
-    # Meme priorite que dans chatbot.py: vLLM principal puis fallback.
-    active_llm = get_active_llm(primary_llm, fallback_llm)
-    try:
-        response = active_llm.invoke(rag_prompt).content
-        final_response = response.strip() or default_response
-    except Exception:
-        # Si le principal echoue, on tente le fallback avant d'abandonner.
-        if active_llm is primary_llm and fallback_llm is not None:
-            response = fallback_llm.invoke(rag_prompt).content
+    final_response = "Aucun service de génération n'est disponible pour le moment."
+    for chat in generation_llm_order(
+        vllm_reachable=is_vllm_up(),
+        vllm_llm=primary_llm,
+        openai_compat_llms=openai_compat_llms,
+        tertiary_llm=fallback_llm,
+    ):
+        try:
+            response = chat.invoke(rag_prompt).content
             final_response = response.strip() or default_response
-        else:
-            final_response = "Le serveur vLLM n'est pas disponible pour le moment."
+            break
+        except Exception:
+            continue
 
     sources_block = build_sources_block(docs)
     if sources_block:
@@ -260,7 +272,7 @@ def generate_chatbot_response(question: str, docs, primary_llm: Any, fallback_ll
 # CHARGEMENT DES MODELES
 # ================================================================
 
-def load_models() -> Tuple[Any, Any, Any, HuggingFaceEmbeddings]:
+def load_models() -> Tuple[Any, Any, Any, Any, HuggingFaceEmbeddings]:
     print("Chargement des modeles (pipeline chatbot)...")
 
     embeddings_model = HuggingFaceEmbeddings(
@@ -270,6 +282,10 @@ def load_models() -> Tuple[Any, Any, Any, HuggingFaceEmbeddings]:
     )
 
     primary_llm = build_vllm_chat(VLLM_MODEL)
+    openai_compat_llms = build_all_openai_compat_chat_list(
+        temperature=GENERATION_TEMPERATURE,
+        max_tokens=GENERATION_MAX_TOKENS,
+    )
     fallback_llm = build_fallback_chat()
 
     vector_store = Chroma(
@@ -280,7 +296,7 @@ def load_models() -> Tuple[Any, Any, Any, HuggingFaceEmbeddings]:
     retriever = vector_store.as_retriever(search_kwargs={"k": RETRIEVAL_TOP_K})
 
     print("Modeles chatbot charges avec succes")
-    return primary_llm, fallback_llm, retriever, embeddings_model
+    return primary_llm, openai_compat_llms, fallback_llm, retriever, embeddings_model
 
 
 # ================================================================
@@ -501,6 +517,7 @@ def calculate_hybrid_score(rag_scores: Dict, judge_scores: Dict, answered: bool)
 def evaluate_question(
     question: str,
     primary_llm: Any,
+    openai_compat_llms: Any,
     fallback_llm: Any,
     retriever: Any,
     embeddings_model: HuggingFaceEmbeddings,
@@ -511,7 +528,9 @@ def evaluate_question(
     num_docs = len(retrieved_docs)
 
     # 2) Generation de reponse avec le meme prompt que le chatbot
-    response = generate_chatbot_response(question, retrieved_docs, primary_llm, fallback_llm)
+    response = generate_chatbot_response(
+        question, retrieved_docs, primary_llm, openai_compat_llms, fallback_llm
+    )
 
     # 3) Detection repondu / non repondu
     answered = not is_unanswered(response)
@@ -532,7 +551,7 @@ def evaluate_question(
         }
     else:
         rag_scores = calculate_rag_score(question, response, retrieved_docs, embeddings_model)
-        judge_llm = get_active_llm(primary_llm, fallback_llm)
+        judge_llm = get_judge_llm(primary_llm, openai_compat_llms, fallback_llm)
         judge_scores = llm_judge_scores(question, response, judge_llm)
 
     hybrid_score = calculate_hybrid_score(rag_scores, judge_scores, answered)
@@ -622,7 +641,7 @@ def main():
     print("=" * 80 + "\n")
 
     # Chargement runtime (LLM + retriever) puis questions d'evaluation.
-    primary_llm, fallback_llm, retriever, embeddings_model = load_models()
+    primary_llm, openai_compat_llms, fallback_llm, retriever, embeddings_model = load_models()
     questions = load_questions(args.input_file)
 
     if not questions:
@@ -642,6 +661,7 @@ def main():
             result = evaluate_question(
                 question,
                 primary_llm,
+                openai_compat_llms,
                 fallback_llm,
                 retriever,
                 embeddings_model,

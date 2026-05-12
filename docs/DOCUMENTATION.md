@@ -37,7 +37,7 @@
 │                     (embeddings)              Retrieval (top 12)      │
 │                                                    │                  │
 │  ┌─────────────────────────────────────────────────▼───────────────┐  │
-│  │                    chatbot.py (Streamlit)                       │  │
+│  │                    app/chatbot.py (Streamlit)                       │  │
 │  │                                                                 │  │
 │  │  1. Utilisateur pose une question                               │  │
 │  │  2. bge-m3 encode la question → recherche dans ChromaDB         │  │
@@ -95,9 +95,9 @@
 
 > Le projet est composé de **5 modules principaux** qui fonctionnent ensemble.
 
-### 3.1 `chatbot.py` — Application Principale
+### 3.1 `app/chatbot.py` — Application Principale
 
-**Fichier** : `chatbot.py` (302 lignes)
+**Fichier** : `app/chatbot.py` (302 lignes)
 
 **Responsabilités** :
 - Interface Streamlit (chat)
@@ -123,9 +123,9 @@
 | `build_context()` | Formate les chunks en contexte numéroté pour le prompt |
 | `format_source()` | Extrait nom de fichier, page, section pour citation |
 
-### 3.2 `ingest_database.py` — Pipeline d'Ingestion
+### 3.2 `chatbot_core/ingest_database.py` — Pipeline d'Ingestion
 
-**Fichier** : `ingest_database.py` (115 lignes)
+**Fichier** : `chatbot_core/ingest_database.py` (115 lignes)
 
 **Responsabilités** :
 - Charger les documents PDF et TXT depuis `data/`
@@ -161,9 +161,9 @@ ChromaDB (chroma_db/)
 | `chunk_id` | UUID unique |
 | `last_updated` | Date de dernière modification du fichier source |
 
-### 3.3 `admin_dashboard.py` — Dashboard Administrateur
+### 3.3 `app/admin_dashboard.py` — Dashboard Administrateur
 
-**Fichier** : `admin_dashboard.py` (563 lignes)
+**Fichier** : `app/admin_dashboard.py` (563 lignes)
 
 **Responsabilités** :
 - Affichage des métriques en temps réel (total messages, taux de succès, questions sans réponse)
@@ -189,9 +189,9 @@ ChromaDB (chroma_db/)
 | **Interactions** | Dernières 15 interactions avec statut et temps relatif |
 | **Historique** | Tableau complet filtrable de toutes les interactions |
 
-### 3.4 `chat_logger.py` — Enregistrement des Interactions
+### 3.4 `chatbot_core/chat_logger.py` — Enregistrement des Interactions
 
-**Fichier** : `chat_logger.py` (265 lignes)
+**Fichier** : `chatbot_core/chat_logger.py` (265 lignes)
 
 **Responsabilités** :
 - Création et gestion de la base SQLite (`chat_logs.db`)
@@ -209,15 +209,15 @@ ChromaDB (chroma_db/)
 | `get_messages_per_day()` | Volume par jour (pour le graphique) |
 | `get_all_logs()` | Toutes les interactions (pour l'export CSV) |
 
-### 3.5 `dashboard_styles.py` — Styles CSS du Dashboard
+### 3.5 `chatbot_core/dashboard_styles.py` — Styles CSS du Dashboard
 
-**Fichier** : `dashboard_styles.py`
+**Fichier** : `chatbot_core/dashboard_styles.py`
 
 Contient la constante `DASHBOARD_CSS` avec tout le CSS personnalisé pour le dashboard admin (cartes, badges, couleurs, animations).
 
-### 3.6 `evaluate_chatbot.py` — Script d'Évaluation
+### 3.6 `tools/evaluate_app/chatbot.py` — Script d'Évaluation
 
-**Fichier** : `evaluate_chatbot.py`
+**Fichier** : `tools/evaluate_app/chatbot.py`
 
 Script d'évaluation automatique du chatbot. Pose une série de questions prédéfinies et mesure la qualité des réponses (score hybride, score RAG, score judge). Génère un rapport JSON utilisé par le dashboard.
 
@@ -356,7 +356,7 @@ copy .env.example .env
 # Les PDF et TXT à indexer vont dans le dossier data/
 
 # 7. Indexer les documents
-python ingest_database.py
+python -m chatbot_core.ingest_database
 ```
 
 ---
@@ -373,7 +373,7 @@ python ingest_database.py
 source .venv/bin/activate
 
 # Indexer les documents (reconstruit ChromaDB)
-python ingest_database.py
+python -m chatbot_core.ingest_database
 ```
 
 ### Étape 2 : Mode Complet (avec serveur distant)
@@ -383,10 +383,10 @@ python ingest_database.py
 ssh -L 8000:localhost:8000 -L 8001:localhost:8001 abdelkarim@charizard.prism.uvsq.fr
 
 # Terminal 2 — Lancer le chatbot (port 8501)
-python -m streamlit run chatbot.py
+python -m streamlit run app/chatbot.py
 
 # Terminal 3 — Lancer le dashboard admin (port 8502)
-python -m streamlit run admin_dashboard.py --server.port 8502
+python -m streamlit run app/admin_dashboard.py --server.port 8502
 ```
 
 | Service | URL | Description |
@@ -403,10 +403,10 @@ Si le serveur n'est pas accessible, l'app fonctionne quand même :
 
 ```bash
 # Terminal 1 — Lancer le chatbot
-python -m streamlit run chatbot.py
+python -m streamlit run app/chatbot.py
 
 # Terminal 2 — Lancer le dashboard admin
-python -m streamlit run admin_dashboard.py --server.port 8502
+python -m streamlit run app/admin_dashboard.py --server.port 8502
 ```
 
 ### Réindexer les Documents
@@ -414,7 +414,7 @@ python -m streamlit run admin_dashboard.py --server.port 8502
 Si vous ajoutez ou modifiez des fichiers dans `data/` :
 
 ```bash
-python ingest_database.py
+python -m chatbot_core.ingest_database
 ```
 
 Cela supprime l'ancien index et reconstruit entièrement ChromaDB.
@@ -430,10 +430,10 @@ Cela supprime l'ancien index et reconstruit entièrement ChromaDB.
 ssh -L 8000:localhost:8000 -L 8001:localhost:8001 abdelkarim@charizard.prism.uvsq.fr
 
 # 2. Chatbot
-python -m streamlit run chatbot.py
+python -m streamlit run app/chatbot.py
 
 # 3. Dashboard (dans un autre terminal)
-python -m streamlit run admin_dashboard.py --server.port 8502
+python -m streamlit run app/admin_dashboard.py --server.port 8502
 ```
 
 ---
@@ -498,12 +498,12 @@ python -m streamlit run admin_dashboard.py --server.port 8502
 ```
 chatbot_M1_AMIS_2025_2026/
 │
-├── chatbot.py              # Application principale (Streamlit + RAG) — port 8501
-├── admin_dashboard.py      # Dashboard administrateur (Streamlit) — port 8502
-├── chat_logger.py          # Module de logging SQLite des interactions
-├── dashboard_styles.py     # Styles CSS pour le dashboard admin
-├── ingest_database.py      # Pipeline d'ingestion des documents
-├── evaluate_chatbot.py     # Script d'évaluation automatique du chatbot
+├── app/chatbot.py              # Application principale (Streamlit + RAG) — port 8501
+├── app/admin_dashboard.py      # Dashboard administrateur (Streamlit) — port 8502
+├── chatbot_core/chat_logger.py          # Module de logging SQLite des interactions
+├── chatbot_core/dashboard_styles.py     # Styles CSS pour le dashboard admin
+├── chatbot_core/ingest_database.py      # Pipeline d'ingestion des documents
+├── tools/evaluate_app/chatbot.py     # Script d'évaluation automatique du chatbot
 ├── requirements.txt        # Dépendances Python
 ├── .env                    # Variables d'environnement (non versionné)
 ├── .env.example            # Template des variables d'environnement
@@ -525,7 +525,7 @@ chatbot_M1_AMIS_2025_2026/
 ├── 4_choix_architecture.md # Justification des choix techniques
 │
 ├── chat_logs.db            # Logs des conversations SQLite (non versionné)
-├── comands                 # Notes de commandes utiles
+├── docs/COMMANDS.md       # Notes de commandes utiles
 ├── .venv/                  # Environnement virtuel Python (non versionné)
 └── __pycache__/            # Cache Python (non versionné)
 ```
@@ -555,7 +555,7 @@ RERANKING_ENABLED=false
 ssh -L 11434:localhost:11434 abdelkarim@charizard.prism.uvsq.fr
 
 # 5. Relancer l'app
-python -m streamlit run chatbot.py
+python -m streamlit run app/chatbot.py
 ```
 
 ### Fonctionner uniquement avec Gemini (sans serveur)
@@ -567,7 +567,7 @@ GEMINI_API_KEY=votre_clé_ici
 
 # L'app détectera automatiquement que vLLM est down
 # et utilisera Gemini comme fallback
-python -m streamlit run chatbot.py
+python -m streamlit run app/chatbot.py
 ```
 
 ---
@@ -590,7 +590,7 @@ python -m streamlit run chatbot.py
 
 ### "Je n'ai pas trouvé cette information dans les documents disponibles."
 
-**C'est normal** si la question porte sur un sujet non couvert par les PDFs dans `data/`. Le chatbot est conçu pour ne pas halluciner. Ajoutez les documents pertinents dans `data/` et relancez `python ingest_database.py`.
+**C'est normal** si la question porte sur un sujet non couvert par les PDFs dans `data/`. Le chatbot est conçu pour ne pas halluciner. Ajoutez les documents pertinents dans `data/` et relancez `python -m chatbot_core.ingest_database`.
 
 ### Les embeddings sont lents
 
@@ -601,8 +601,8 @@ python -m streamlit run chatbot.py
 ### Comment ajouter de nouveaux documents ?
 
 1. Placer les fichiers PDF ou TXT dans `data/`
-2. Relancer : `python ingest_database.py`
-3. Redémarrer l'app : `python -m streamlit run chatbot.py`
+2. Relancer : `python -m chatbot_core.ingest_database`
+3. Redémarrer l'app : `python -m streamlit run app/chatbot.py`
 
 ### Comment changer le modèle LLM ?
 

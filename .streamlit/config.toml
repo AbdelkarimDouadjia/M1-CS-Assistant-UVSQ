@@ -1,0 +1,22 @@
+# Disable Streamlit's source watcher: it iterates every loaded module and on
+# Windows + large ML stacks (torch / scipy / transformers) it exhausts file
+# handles and raises WinError 1450 ("Insufficient system resources").
+[server]
+fileWatcherType = "none"
+runOnSave = false
+maxUploadSize = 50
+
+[runner]
+fastReruns = true
+postScriptGC = false
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "light"
+primaryColor = "#0057b8"
+backgroundColor = "#f6f8fb"
+secondaryBackgroundColor = "#eef3f8"
+textColor = "#0f172a"
+font = "sans serif"

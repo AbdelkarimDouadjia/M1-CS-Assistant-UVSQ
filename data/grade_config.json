@@ -1,0 +1,197 @@
+{
+  "parcours": ["AMIS", "DataScale", "IRS", "SeCReTS"],
+  "compensation_threshold": 7.0,
+  "validation_threshold": 10.0,
+  "max_bo_choices": 2,
+  "groups": {
+    "S1": ["SF1", "CCB"],
+    "S2": ["SF2", "BO", "CCT"]
+  },
+  "compensation_groups": [
+    {"label": "SF1 + CCB", "blocks": ["SF1", "CCB"], "threshold": 10.0},
+    {"label": "SF2 + BO + CCT", "blocks": ["SF2", "BO", "CCT"], "threshold": 10.0}
+  ],
+  "non_compensable_blocks": ["SF1", "SF2"],
+  "ues": [
+    {
+      "name": "Complément de Maths Discrètes",
+      "code": "MIN17101",
+      "semester": 1,
+      "bcc": "CCB",
+      "bcc_by_parcours": {"AMIS": "CCB", "DataScale": "CCB", "IRS": "CCB", "SeCReTS": "CCB"},
+      "ects": 3,
+      "rule": "exam_only"
+    },
+    {
+      "name": "Complément d'Algo et Complexité",
+      "code": "MIN17102",
+      "semester": 1,
+      "bcc": "CCB",
+      "bcc_by_parcours": {"AMIS": "CCB", "DataScale": "CCB", "IRS": "CCB", "SeCReTS": "CCB"},
+      "ects": 3,
+      "rule": "exam_only"
+    },
+    {
+      "name": "Complément de Programmation",
+      "code": "MIN17103",
+      "semester": 1,
+      "bcc": "CCB",
+      "bcc_by_parcours": {"AMIS": "CCB", "DataScale": "CCB", "IRS": "CCB", "SeCReTS": "CCB"},
+      "ects": 3,
+      "rule": "cc_s1_exam_s2"
+    },
+    {
+      "name": "Algorithmique randomisée et RO",
+      "code": "MIN15111",
+      "semester": 1,
+      "bcc": "SF1",
+      "bcc_by_parcours": {"AMIS": "SF1", "DataScale": "CCB", "IRS": "SF1", "SeCReTS": "CCB"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Réseaux et systèmes",
+      "code": "MIN15112",
+      "semester": 1,
+      "bcc": "CCB",
+      "bcc_by_parcours": {"AMIS": "CCB", "DataScale": "CCB", "IRS": "SF1", "SeCReTS": "SF1"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Bases de données avancées",
+      "code": "MIN15113",
+      "semester": 1,
+      "bcc": "CCB",
+      "bcc_by_parcours": {"AMIS": "CCB", "DataScale": "SF1", "IRS": "CCB", "SeCReTS": "CCB"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Algorithmique de graphes",
+      "code": "MIN15121",
+      "semester": 1,
+      "bcc": "SF1",
+      "bcc_by_parcours": {"AMIS": "SF1", "DataScale": "CCB", "IRS": "CCB", "SeCReTS": "CCB"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Cryptographie",
+      "code": "MIN15122",
+      "semester": 1,
+      "bcc": "CCB",
+      "bcc_by_parcours": {"AMIS": "CCB", "DataScale": "SF1", "IRS": "CCB", "SeCReTS": "SF1"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Méthodes de Ranking",
+      "code": "MIN17211",
+      "semester": 2,
+      "bcc": "SF2",
+      "bcc_by_parcours": {"AMIS": "SF2", "DataScale": "BO", "IRS": "BO", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Simulation",
+      "code": "MIN17212",
+      "semester": 2,
+      "bcc": "SF2",
+      "bcc_by_parcours": {"AMIS": "SF2", "DataScale": "BO", "IRS": "BO", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Tuning de BD",
+      "code": "MIN17213",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "SF2", "IRS": "BO", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Conception de BD",
+      "code": "MIN17214",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "SF2", "IRS": "BO", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Protocoles IP",
+      "code": "MIN17215",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "BO", "IRS": "SF2", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Réseaux étendus",
+      "code": "MIN17216",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "BO", "IRS": "SF2", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Application Web et Sécurité",
+      "code": "MIN17217",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "BO", "IRS": "BO", "SeCReTS": "SF2"},
+      "ects": 3,
+      "rule": "cc_only_no_s2"
+    },
+    {
+      "name": "Calcul Sécurisé",
+      "code": "MIN17218",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "BO", "IRS": "BO", "SeCReTS": "SF2"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Analyses des données EVRY",
+      "code": "MIN18000",
+      "semester": 2,
+      "bcc": "BO",
+      "bcc_by_parcours": {"AMIS": "BO", "DataScale": "BO", "IRS": "BO", "SeCReTS": "BO"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "Anglais",
+      "code": "MSANGS2I",
+      "semester": 2,
+      "bcc": "CCT",
+      "bcc_by_parcours": {"AMIS": "CCT", "DataScale": "CCT", "IRS": "CCT", "SeCReTS": "CCT"},
+      "ects": 3,
+      "rule": "cc_s1_exam_s2"
+    },
+    {
+      "name": "Programmation, GL et Preuve",
+      "code": "MIN17201",
+      "semester": 2,
+      "bcc": "CCT",
+      "bcc_by_parcours": {"AMIS": "CCT", "DataScale": "CCT", "IRS": "CCT", "SeCReTS": "CCT"},
+      "ects": 3,
+      "rule": "cc_et"
+    },
+    {
+      "name": "TER",
+      "code": "MIN15221",
+      "semester": 2,
+      "bcc": "CCT",
+      "bcc_by_parcours": {"AMIS": "CCT", "DataScale": "CCT", "IRS": "CCT", "SeCReTS": "CCT"},
+      "ects": 3,
+      "rule": "cc_only_no_s2"
+    }
+  ]
+}

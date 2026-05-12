@@ -12,7 +12,7 @@ python -m venv .venv
 & ".\.venv\Scripts\Activate.ps1"
 pip install -r requirements.txt
 copy .env.example .env
-python ingest_database.py
+python -m chatbot_core.ingest_database
 ```
 
 ## 2) Serveur - lancer vLLM (mode stable)
@@ -89,14 +89,14 @@ Terminal local 1:
 
 ```powershell
 & ".\.venv\Scripts\Activate.ps1"
-python -m streamlit run chatbot.py
+python -m streamlit run app/chatbot.py
 ```
 
 Terminal local 2:
 
 ```powershell
 & ".\.venv\Scripts\Activate.ps1"
-python -m streamlit run admin_dashboard.py --server.port 8502
+python -m streamlit run app/admin_dashboard.py --server.port 8502
 ```
 
 ## 5) URLs
@@ -116,6 +116,6 @@ Puis relancer Terminal A et Terminal B.
 
 
 
-# LANCER L'ÉVALUATION COMPLÈTE:
-python evaluate_chatbot.py
-python evaluate_chatbot.py --max-questions 10
+# LANCER L'EVALUATION COMPLETE:
+python -m tools.evaluate_chatbot
+python -m tools.evaluate_chatbot --max-questions 10

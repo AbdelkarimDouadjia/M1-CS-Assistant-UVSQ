@@ -2,16 +2,17 @@
 
 DASHBOARD_CSS = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700;800&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    .block-container { padding-top: 3rem; }
+    html, body, [class*="css"] { font-family: "Inter", -apple-system, "Segoe UI", Roboto, sans-serif !important; }
+    .block-container { padding-top: 2.2rem; }
 
     .stat-card {
-        background: white;
+        background: linear-gradient(180deg, #ffffff, #f8fafc);
         border: 1px solid #e2e8f0;
-        border-radius: 12px;
-        padding: 24px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        border-radius: 14px;
+        padding: 22px;
+        box-shadow: 0 1px 3px rgba(15,23,42,.05);
     }
     .stat-label {
         color: #64748b;

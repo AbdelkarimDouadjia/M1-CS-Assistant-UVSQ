@@ -1,5 +1,6 @@
 import os
 import shutil
+import gc
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
@@ -27,23 +28,27 @@ from langchain_community.document_loaders import DirectoryLoader, PyPDFDirectory
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-DATA_PATH = r"data"
-CHROMA_PATH = r"chroma_db"
+load_dotenv(PROJECT_ROOT / ".env")
+
+DATA_PATH = str(PROJECT_ROOT / "data")
+CHROMA_PATH = str(PROJECT_ROOT / "chroma_db")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
 
 
 def load_documents():
-    pdf_documents = PyPDFDirectoryLoader(DATA_PATH).load()
+    pdf_loader = PyPDFDirectoryLoader(DATA_PATH, recursive=True)
+    pdf_documents = pdf_loader.load()
     txt_documents = DirectoryLoader(
         DATA_PATH,
         glob="**/*.txt",
         loader_cls=TextLoader,
         loader_kwargs={"encoding": "utf-8"},
         silent_errors=True,
+        recursive=True,
     ).load()
     md_documents = DirectoryLoader(
         DATA_PATH,
@@ -51,6 +56,7 @@ def load_documents():
         loader_cls=TextLoader,
         loader_kwargs={"encoding": "utf-8"},
         silent_errors=True,
+        recursive=True,
     ).load()
     return (
         pdf_documents + txt_documents + md_documents,
@@ -105,8 +111,8 @@ def build_chunks(raw_documents):
     return text_splitter.split_documents(raw_documents)
 
 
-def build_vector_store():
-    return get_vector_store()
+def build_vector_store(embeddings_model=None, persist_directory: str | None = None):
+    return get_vector_store(embeddings_model, persist_directory)
 
 
 def get_embeddings_model():
@@ -117,13 +123,13 @@ def get_embeddings_model():
     )
 
 
-def get_vector_store(embeddings_model=None):
+def get_vector_store(embeddings_model=None, persist_directory: str | None = None):
     if embeddings_model is None:
         embeddings_model = get_embeddings_model()
     return Chroma(
         collection_name="example_collection",
         embedding_function=embeddings_model,
-        persist_directory=CHROMA_PATH,
+        persist_directory=persist_directory or CHROMA_PATH,
     )
 
 
@@ -133,8 +139,15 @@ def ingest_all_documents():
         raise RuntimeError(f"Aucun document trouve dans {DATA_PATH}.")
 
     chunks = build_chunks(raw_documents)
-    shutil.rmtree(CHROMA_PATH, ignore_errors=True)
-    vector_store = build_vector_store()
+    embeddings_model = get_embeddings_model()
+    chroma_path = Path(CHROMA_PATH)
+    temp_chroma_path = PROJECT_ROOT / "chroma_db_tmp"
+    backup_chroma_path = PROJECT_ROOT / "chroma_db_backup"
+    shutil.rmtree(temp_chroma_path, ignore_errors=True)
+    vector_store = build_vector_store(
+        embeddings_model=embeddings_model,
+        persist_directory=str(temp_chroma_path),
+    )
 
     uuids = []
     for chunk in chunks:
@@ -143,6 +156,19 @@ def ingest_all_documents():
         uuids.append(chunk_id)
 
     vector_store.add_documents(documents=chunks, ids=uuids)
+    del vector_store
+    gc.collect()
+
+    shutil.rmtree(backup_chroma_path, ignore_errors=True)
+    if chroma_path.exists():
+        shutil.move(str(chroma_path), str(backup_chroma_path))
+    try:
+        shutil.move(str(temp_chroma_path), str(chroma_path))
+    except Exception:
+        if backup_chroma_path.exists() and not chroma_path.exists():
+            shutil.move(str(backup_chroma_path), str(chroma_path))
+        raise
+    shutil.rmtree(backup_chroma_path, ignore_errors=True)
     print(
         f"Documents charges : {len(raw_documents)} "
         f"(PDF/pages={pdf_count}, txt={txt_count}, md={md_count})"

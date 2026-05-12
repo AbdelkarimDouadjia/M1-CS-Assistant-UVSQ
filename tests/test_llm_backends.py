@@ -2,7 +2,7 @@
 Sondes réseau pour les backends LLM (aucune clé dans le code source).
 
 Usage (depuis la racine du projet) :
-  .\\.venv\\Scripts\\python.exe test_llm_backends.py
+  .\\.venv\\Scripts\\python.exe -m tests.test_llm_backends
 
 Avec une clé dans .env uniquement, teste aussi un appel chat minimal par passerelle.
 """
@@ -12,13 +12,16 @@ from __future__ import annotations
 import json
 import os
 import sys
+from pathlib import Path
 
 import requests
 from dotenv import load_dotenv
 
-from llm_backends import resolve_compat_model_names
+from chatbot_core.llm_backends import resolve_compat_model_names
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 def probe_get(url: str, timeout: float = 5.0) -> tuple[int, str]:

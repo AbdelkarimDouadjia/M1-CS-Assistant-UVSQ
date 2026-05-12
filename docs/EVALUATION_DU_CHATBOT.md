@@ -3,7 +3,7 @@
 # ================================================================
 
 # LANCER L'ÉVALUATION COMPLÈTE:
-python evaluate_chatbot.py
+python -m tools.evaluate_chatbot
 
 # Cela va:
 #   1. Lire toutes les questions du fichier question.md
@@ -68,7 +68,7 @@ python evaluate_chatbot.py
 
 # Si Score Hybride bas:
 #   → Vérifier que ChromaDB est bien rempli
-#   → Relancer ingest_database.py pour mettre à jour les embeddings
+#   → Relancer chatbot_core/ingest_database.py pour mettre à jour les embeddings
 #   → Tester avec moins de questions d'abord pour déboguer
 
 

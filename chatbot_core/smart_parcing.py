@@ -1,8 +1,11 @@
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.document_loaders import PyMuPDFLoader, TextLoader
 from dotenv import load_dotenv
+from pathlib import Path
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 class SmartChunkingConfig:

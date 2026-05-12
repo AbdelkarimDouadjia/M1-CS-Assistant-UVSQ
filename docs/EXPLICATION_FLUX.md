@@ -9,14 +9,14 @@
 │  L'admin dépose des fichiers PDF/TXT dans data/                              │
 │        │                                                                     │
 │        ▼                                                                     │
-│  admin_dashboard.py : st.file_uploader()                                     │
+│  app/admin_dashboard.py : st.file_uploader()                                     │
 │  → uploaded_file.getbuffer() → open("data/fichier.pdf", "wb") → disque       │
 │        │                                                                     │
 │        ▼                                                                     │
 │  L'admin clique "🚀 Mettre à jour la base de données"                       │
 │        │                                                                     │
 │        ▼                                                                     │
-│  ingest_database.py : clear_and_reingest()                                   │
+│  chatbot_core/ingest_database.py : clear_and_reingest()                                   │
 │    1. Vider ChromaDB (supprimer tous les anciens vecteurs)                   │
 │    2. os.listdir("data/") → lister tous les fichiers                         │
 │    3. Lire chaque fichier (PDF → extraire texte / TXT → lire brut)          │
@@ -36,18 +36,18 @@
 │  "Quels sont les masters disponibles ?"                                      │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 1 - Recherche dans ChromaDB                              │
+│  app/chatbot.py : Étape 1 - Recherche dans ChromaDB                              │
 │    → La question est transformée en vecteur (même modèle d'embedding)        │
 │    → ChromaDB compare ce vecteur avec tous les chunks stockés                │
 │    → Retourne les N documents les plus proches (les plus pertinents)         │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 2 - Génération de la réponse (LLM / IA)                  │
+│  app/chatbot.py : Étape 2 - Génération de la réponse (LLM / IA)                  │
 │    → Envoie au modèle IA : "Voici les documents trouvés + la question"       │
 │    → Le modèle génère une réponse en langage naturel                         │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 3 - Détection succès / échec                             │
+│  app/chatbot.py : Étape 3 - Détection succès / échec                             │
 │    → Parcourt la réponse pour chercher des mots-clés d'échec :               │
 │      "je ne sais pas", "aucune information", "désolé", "no information"...   │
 │    → any(kw in response.lower() for kw in unanswered_keywords)               │
@@ -55,8 +55,8 @@
 │    → Si aucun mot-clé   → answered = True  (✅ répondu)                      │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 4 - Enregistrement dans SQLite                           │
-│    → Appelle chat_logger.py : log_question()                                 │
+│  app/chatbot.py : Étape 4 - Enregistrement dans SQLite                           │
+│    → Appelle chatbot_core/chat_logger.py : log_question()                                 │
 │      INSERT INTO chat_logs VALUES (                                          │
 │        timestamp  = "2026-03-10 14:30:00",                                   │
 │        question   = "Quels sont les masters ?",                              │
@@ -70,17 +70,17 @@
 │  chat_logs.db (fichier SQLite) ← la ligne est sauvegardée                    │
 │        │                                                                     │
 │        ▼                                                                     │
-│  chatbot.py : Étape 5 - Affichage                                            │
+│  app/chatbot.py : Étape 5 - Affichage                                            │
 │    → La réponse est affichée à l'utilisateur dans l'interface Streamlit      │
 └──────────────────────────────────────────────────────────────────────────────┘
 
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                     DASHBOARD ADMIN (consultation)                           │
 │                                                                              │
-│  L'admin ouvre admin_dashboard.py → Streamlit exécute tout le code           │
+│  L'admin ouvre app/admin_dashboard.py → Streamlit exécute tout le code           │
 │        │                                                                     │
 │        ▼                                                                     │
-│  Lecture des stats depuis SQLite (chat_logger.py) :                          │
+│  Lecture des stats depuis SQLite (chatbot_core/chat_logger.py) :                          │
 │                                                                              │
 │    get_total_messages()                                                      │
 │      → SELECT COUNT(*) FROM chat_logs                        → ex: 150       │
@@ -135,11 +135,11 @@
 ┌──────────────────────────────────────────────────────────────────────────────┐
 │                   ÉVALUATION OFFLINE DU CHATBOT                              │
 │                                                                              │
-│  L'admin/l'équipe lance le script evaluate_chatbot.py                        │
+│  L'admin/l'équipe lance le script evaluate_app/chatbot.py                        │
 │  (questions depuis evaluation_chatbot/question.md)                           │
 │        │                                                                     │
 │        ▼                                                                     │
-│  evaluate_chatbot.py : Pour chaque question                                  │
+│  evaluate_app/chatbot.py : Pour chaque question                                  │
 │    1. Recherche top-k chunks dans ChromaDB                                   │
 │    2. Génère une réponse via LLM                                             │
 │    3. Détecte si réponse valide ou non (answered True/False)                 │
@@ -153,7 +153,7 @@
 │    evaluation_results_YYYYMMDD_HHMMSS.csv                                    │
 │        │                                                                     │
 │        ▼                                                                     │
-│  admin_dashboard.py : section "🧪 Évaluation du chatbot"                    │
+│  app/admin_dashboard.py : section "🧪 Évaluation du chatbot"                    │
 │    → load_evaluation_reports() lit les fichiers JSON                         │
 │    → L'admin choisit un rapport dans une liste                               │
 │    → Affiche métriques : nb questions, taux de réponse, score global/hybride │
@@ -167,18 +167,18 @@
 
 | Fichier | Rôle | Base de données |
 |---|---|---|
-| **chatbot.py** | Interface utilisateur + recherche + réponse IA + écriture logs | Lit ChromaDB / Écrit dans SQLite |
-| **chat_logger.py** | Fonctions SQL (écriture + lecture) | Lit et écrit dans SQLite (`chat_logs.db`) |
-| **admin_dashboard.py** | Interface admin + stats + gestion fichiers | Lit SQLite / Gère `data/` + ChromaDB |
-| **ingest_database.py** | Vectorisation des documents | Lit `data/` / Écrit dans ChromaDB |
-| **evaluate_chatbot.py** | Évaluation automatique des réponses (RAG + Judge + hybride) | Lit ChromaDB / Génère `evaluation_results_*.json` et `.csv` |
+| **app/chatbot.py** | Interface utilisateur + recherche + réponse IA + écriture logs | Lit ChromaDB / Écrit dans SQLite |
+| **chatbot_core/chat_logger.py** | Fonctions SQL (écriture + lecture) | Lit et écrit dans SQLite (`chat_logs.db`) |
+| **app/admin_dashboard.py** | Interface admin + stats + gestion fichiers | Lit SQLite / Gère `data/` + ChromaDB |
+| **chatbot_core/ingest_database.py** | Vectorisation des documents | Lit `data/` / Écrit dans ChromaDB |
+| **evaluate_app/chatbot.py** | Évaluation automatique des réponses (RAG + Judge + hybride) | Lit ChromaDB / Génère `evaluation_results_*.json` et `.csv` |
 
 ## Les 2 bases de données
 
 | Base | Format | Contenu | Utilisée par |
 |---|---|---|---|
-| **chat_logs.db** | SQLite (fichier) | Toutes les questions/réponses | chatbot.py (écriture) + admin_dashboard.py (lecture) |
-| **chroma_db/** | ChromaDB (dossier) | Vecteurs des documents PDF/TXT | ingest_database.py (écriture) + chatbot.py (lecture) |
+| **chat_logs.db** | SQLite (fichier) | Toutes les questions/réponses | app/chatbot.py (écriture) + app/admin_dashboard.py (lecture) |
+| **chroma_db/** | ChromaDB (dossier) | Vecteurs des documents PDF/TXT | chatbot_core/ingest_database.py (écriture) + app/chatbot.py (lecture) |
 
 ---
 
@@ -242,11 +242,11 @@
 
 ---
 
-## Détail technique : Évaluation du chatbot (evaluate_chatbot.py)
+## Détail technique : Évaluation du chatbot (evaluate_app/chatbot.py)
 
 ### Étape 1 : Lancer l'évaluation
 ```bash
-python evaluate_chatbot.py
+python -m tools.evaluate_chatbot
 ```
 Options possibles :
 - `--input-file` : choisir un autre fichier de questions
@@ -268,7 +268,7 @@ Le script enregistre automatiquement :
 
 ## Détail technique : Affichage de l'évaluation dans le Dashboard Admin
 
-Dans `admin_dashboard.py`, la section "🧪 Évaluation du chatbot" :
+Dans `app/admin_dashboard.py`, la section "🧪 Évaluation du chatbot" :
 1. Appelle `load_evaluation_reports()` qui parcourt les `.json` du projet.
 2. Normalise le format (dict avec `results` ou liste directe).
 3. Trie les rapports par date de modification (le plus récent en haut).
@@ -299,7 +299,7 @@ uploaded_files = st.file_uploader(
 ```python
 for uploaded_file in uploaded_files:
     file_path = os.path.join(DATA_PATH, uploaded_file.name)
-    # DATA_PATH = "data" (défini dans ingest_database.py)
+    # DATA_PATH = "data" (défini dans chatbot_core/ingest_database.py)
 
     if os.path.exists(file_path):
         st.warning(f"⚠️ {uploaded_file.name} existe déjà, il sera remplacé.")
@@ -323,7 +323,7 @@ if st.button("🚀 Mettre à jour la base de données", type="primary"):
     with st.spinner("Mise à jour en cours..."):
         nb_chunks = clear_and_reingest()
 ```
-`clear_and_reingest()` (dans ingest_database.py) fait :
+`clear_and_reingest()` (dans chatbot_core/ingest_database.py) fait :
 1. Vider ChromaDB → supprime tous les vecteurs existants
 2. Lister les fichiers dans `data/` avec `os.listdir(DATA_PATH)`
 3. Lire chaque fichier (PDF → extraction texte / TXT → lecture brute)
@@ -361,7 +361,7 @@ size_kb = file_size / 1024
 
 ---
 
-## Détail technique : Fonctions de statistiques (chat_logger.py)
+## Détail technique : Fonctions de statistiques (chatbot_core/chat_logger.py)
 
 | Fonction | Requête SQL | Résultat |
 |---|---|---|
@@ -384,4 +384,4 @@ Chaque fonction :
 
 ---
 
-**En résumé** : l'upload passe par Streamlit (RAM) → `os` (disque `data/`) → `clear_and_reingest()` (ChromaDB). Les stats passent par `chat_logger.py` → SQLite → affichage Streamlit.
+**En résumé** : l'upload passe par Streamlit (RAM) → `os` (disque `data/`) → `clear_and_reingest()` (ChromaDB). Les stats passent par `chatbot_core/chat_logger.py` → SQLite → affichage Streamlit.

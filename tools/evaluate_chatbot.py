@@ -24,10 +24,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 
-from unanswered_detection import is_unanswered_response
-from llm_backends import build_all_openai_compat_chat_list, generation_llm_order
+from chatbot_core.unanswered_detection import is_unanswered_response
+from chatbot_core.llm_backends import build_all_openai_compat_chat_list, generation_llm_order
 
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+EVALUATION_DIR = PROJECT_ROOT / "evaluation_chatbot"
+
+load_dotenv(PROJECT_ROOT / ".env")
 
 
 # ================================================================
@@ -35,7 +38,7 @@ load_dotenv()
 # ================================================================
 # Les variables .env gardent les memes noms que chatbot.py pour
 # garantir le meme comportement entre chat en ligne et evaluation.
-CHROMA_PATH = "chroma_db"
+CHROMA_PATH = str(PROJECT_ROOT / "chroma_db")
 COLLECTION_NAME = "example_collection"
 
 VLLM_API_BASE = os.getenv("VLLM_BASE_URL") or os.getenv("VLLM_API_BASE", "http://localhost:8000/v1")
@@ -306,8 +309,8 @@ def load_models() -> Tuple[Any, Any, Any, Any, HuggingFaceEmbeddings]:
 def load_questions(file_path: str = None) -> List[str]:
     if file_path is None:
         possible_paths = [
-            "question.md",
-            "evaluation_chatbot/question.md",
+            EVALUATION_DIR / "question.md",
+            PROJECT_ROOT / "question.md",
             Path(__file__).parent / "question.md",
         ]
         for p in possible_paths:
@@ -673,8 +676,9 @@ def main():
 
     # Le dashboard admin detecte automatiquement les rapports JSON produits ici.
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    json_file = f"evaluation_results_{timestamp}.json"
-    csv_file = f"evaluation_results_{timestamp}.csv"
+    EVALUATION_DIR.mkdir(exist_ok=True)
+    json_file = EVALUATION_DIR / f"evaluation_results_{timestamp}.json"
+    csv_file = EVALUATION_DIR / f"evaluation_results_{timestamp}.csv"
 
     save_results_json(results, json_file)
     save_results_csv(results, csv_file)

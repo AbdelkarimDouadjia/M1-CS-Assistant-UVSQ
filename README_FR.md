@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="app/assets/m1-assistant-logo.png" alt="Logo Assistant M1 Computer Science" width="118">
+</p>
+
 <h1 align="center">Assistant M1 Computer Science</h1>
 
 <p align="center">
@@ -10,25 +14,44 @@
   <strong>Chatbot UVSQ / Universite Paris-Saclay avec RAG, Gemini, backup vLLM, memoire etudiante et dashboard admin.</strong>
 </p>
 
-<p align="center">
-  <img alt="Python" title="Python" width="44" height="44" src="https://cdn.simpleicons.org/python/3776AB">
-  &nbsp;&nbsp;
-  <img alt="Streamlit" title="Streamlit" width="44" height="44" src="https://cdn.simpleicons.org/streamlit/FF4B4B">
-  &nbsp;&nbsp;
-  <img alt="Gemini" title="Gemini" width="44" height="44" src="https://cdn.simpleicons.org/googlegemini/4285F4">
-  &nbsp;&nbsp;
-  <img alt="LangChain" title="LangChain" width="44" height="44" src="https://cdn.simpleicons.org/langchain/1C3C3C">
-  &nbsp;&nbsp;
-  <img alt="Hugging Face" title="Hugging Face" width="44" height="44" src="https://cdn.simpleicons.org/huggingface/FFD21E">
-  &nbsp;&nbsp;
-  <img alt="SQLite" title="SQLite" width="44" height="44" src="https://cdn.simpleicons.org/sqlite/003B57">
-</p>
-
-<p align="center">
-  <img alt="ChromaDB" title="ChromaDB" height="38" src="https://raw.githubusercontent.com/chroma-core/chroma/main/docs/assets/chroma-wordmark-color.png">
-  &nbsp;&nbsp;&nbsp;
-  <img alt="vLLM" title="vLLM" height="38" src="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-light.png">
-</p>
+<table align="center">
+  <tr>
+    <td align="center" width="96">
+      <img alt="Python" title="Python" width="42" height="42" src="https://cdn.simpleicons.org/python/3776AB"><br>
+      <sub><b>Python</b></sub>
+    </td>
+    <td align="center" width="96">
+      <img alt="Streamlit" title="Streamlit" width="42" height="42" src="https://cdn.simpleicons.org/streamlit/FF4B4B"><br>
+      <sub><b>Streamlit</b></sub>
+    </td>
+    <td align="center" width="96">
+      <img alt="Gemini" title="Gemini" width="42" height="42" src="https://cdn.simpleicons.org/googlegemini/4285F4"><br>
+      <sub><b>Gemini</b></sub>
+    </td>
+    <td align="center" width="96">
+      <img alt="LangChain" title="LangChain" width="42" height="42" src="https://cdn.simpleicons.org/langchain/1C3C3C"><br>
+      <sub><b>LangChain</b></sub>
+    </td>
+    <td align="center" width="96">
+      <img alt="Hugging Face" title="Hugging Face" width="42" height="42" src="https://cdn.simpleicons.org/huggingface/FFD21E"><br>
+      <sub><b>Hugging Face</b></sub>
+    </td>
+    <td align="center" width="96">
+      <img alt="SQLite" title="SQLite" width="42" height="42" src="https://cdn.simpleicons.org/sqlite/003B57"><br>
+      <sub><b>SQLite</b></sub>
+    </td>
+  </tr>
+  <tr>
+    <td align="center" colspan="3">
+      <img alt="ChromaDB" title="ChromaDB" height="34" src="https://raw.githubusercontent.com/chroma-core/chroma/main/docs/assets/chroma-wordmark-color.png"><br>
+      <sub><b>ChromaDB</b></sub>
+    </td>
+    <td align="center" colspan="3">
+      <img alt="vLLM" title="vLLM" height="34" src="https://raw.githubusercontent.com/vllm-project/vllm/main/docs/assets/logos/vllm-logo-text-light.png"><br>
+      <sub><b>vLLM</b></sub>
+    </td>
+  </tr>
+</table>
 
 <p align="center">
   <img alt="RAG" src="https://img.shields.io/badge/RAG-Base%20Documentaire-6D28D9?style=for-the-badge">

@@ -76,15 +76,27 @@ VLLM_BASE_URL=http://localhost:8000/v1
 VLLM_API_KEY=unused
 VLLM_MODEL=Qwen/Qwen3-30B-A3B
 ANSWER_MODEL=Qwen/Qwen3-30B-A3B
+ACTIVE_BACKEND=auto
 
 RERANKER_API_BASE=http://localhost:8001
 RERANKER_MODEL=Qwen/Qwen3-Reranker-4B
 RERANKING_ENABLED=true
+LOCAL_RERANKER_ENABLED=true
+LOCAL_RERANKER_MODEL=BAAI/bge-reranker-base
+QUERY_EXPANSION_ENABLED=false
+QUERY_EXPANSION_MAX_VARIANTS=3
+RERASKER_ENABLED=false
+RERASKER_MAX_VARIANTS=3
+SMART_CHUNKING_ENABLED=false
+SMART_CHUNKING_MODEL=gemini-2.5-flash
 
-GEMINI_API_KEY=
+GEMINI_API_KEY=PASTE_THE_GEMINI_KEY_HERE
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
-Important : `localhost:8000` et `localhost:8001` fonctionnent seulement si le tunnel SSH est ouvert.
+Important : avec `ACTIVE_BACKEND=auto`, le chatbot essaie Gemini en premier. Le serveur vLLM UVSQ sert de secours quand le tunnel SSH est ouvert.
+
+`localhost:8000` et `localhost:8001` fonctionnent seulement si le tunnel SSH est ouvert.
 
 ### 5. Creer Ou Utiliser Une Cle SSH Pour Le Serveur
 
@@ -179,9 +191,11 @@ notepad .env
 Mettre la cle Gemini ici :
 
 ```env
+ACTIVE_BACKEND=auto
 GEMINI_API_KEY=PASTE_THE_GEMINI_KEY_HERE
 GEMINI_MODEL=gemini-2.5-flash
 RERANKING_ENABLED=false
+LOCAL_RERANKER_ENABLED=true
 ```
 
 La cle Gemini doit rester uniquement dans le fichier `.env` local.
@@ -312,6 +326,7 @@ Le tunnel SSH n'est pas necessaire.
 Verifier que `.env` contient :
 
 ```env
+ACTIVE_BACKEND=auto
 GEMINI_API_KEY=PASTE_THE_GEMINI_KEY_HERE
 RERANKING_ENABLED=false
 ```

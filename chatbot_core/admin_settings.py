@@ -38,6 +38,26 @@ def _env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_bool_any(names: tuple[str, ...], default: bool) -> bool:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None:
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+    return default
+
+
+def _env_int_any(names: tuple[str, ...], default: int) -> int:
+    for name in names:
+        value = os.getenv(name)
+        if value is None:
+            continue
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            continue
+    return default
+
+
 def default_settings() -> dict[str, Any]:
     """Resolve defaults from environment so existing .env files keep working."""
     return {
@@ -50,8 +70,10 @@ def default_settings() -> dict[str, Any]:
         "memory_feature_enabled": True,
         "suggestions_enabled": True,
         # Model routing
-        # active_backend = auto | vllm | fallback | gemini
-        "active_backend": "auto",
+        # active_backend = auto | gemini | vllm | fallback
+        # auto = Gemini first, then optional OpenAI-compatible providers,
+        # then the UVSQ/vLLM server as backup.
+        "active_backend": os.getenv("ACTIVE_BACKEND", "auto"),
         "vllm_model": os.getenv("VLLM_MODEL", os.getenv("ANSWER_MODEL", "Qwen/Qwen3-30B-A3B")),
         "fallback_model": os.getenv("FALLBACK_MODEL", ""),
         "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
@@ -63,6 +85,8 @@ def default_settings() -> dict[str, Any]:
         "retrieval_top_k": _env_int("RETRIEVAL_TOP_K", 12),
         "final_context_k": _env_int("FINAL_CONTEXT_K", _env_int("RERANKER_TOP_K", 5)),
         "reranking_enabled": _env_bool("RERANKING_ENABLED", True),
+        "query_expansion_enabled": _env_bool_any(("QUERY_EXPANSION_ENABLED", "RERASKER_ENABLED"), False),
+        "query_expansion_max_variants": _env_int_any(("QUERY_EXPANSION_MAX_VARIANTS", "RERASKER_MAX_VARIANTS"), 3),
         # Limits
         "max_upload_chars": 12000,
     }

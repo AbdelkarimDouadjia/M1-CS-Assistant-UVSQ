@@ -148,18 +148,20 @@ def generation_llm_order(
     tertiary_llm: Any,
 ) -> List[Any]:
     """
-    Priorité : vLLM local si sonde OK, puis tous les clients passerelle (modèles / 2e API),
-    puis Gemini / second vLLM (tertiary), en dernier recours vLLM même si la sonde était négative.
+    Priorité release : Gemini / cloud principal (``tertiary_llm``), puis les
+    passerelles OpenAI-compatibles, puis le serveur vLLM UVSQ si joignable.
+    Le client vLLM reste en dernier recours meme si la sonde etait negative
+    afin de permettre un mode force ou un tunnel qui vient de demarrer.
     """
     ordered: List[Any] = []
-    if vllm_reachable and vllm_llm is not None:
-        ordered.append(vllm_llm)
+    if tertiary_llm is not None:
+        ordered.append(tertiary_llm)
     if openai_compat_llms:
         for c in openai_compat_llms:
             if c is not None:
                 ordered.append(c)
-    if tertiary_llm is not None:
-        ordered.append(tertiary_llm)
+    if vllm_reachable and vllm_llm is not None:
+        ordered.append(vllm_llm)
     if vllm_llm is not None and vllm_llm not in ordered:
         ordered.append(vllm_llm)
 

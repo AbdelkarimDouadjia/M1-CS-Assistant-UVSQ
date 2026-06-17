@@ -23,12 +23,14 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_openai import ChatOpenAI
 
 from chatbot_core.admin_settings import load_settings
+from chatbot_core.llm_backends import build_all_openai_compat_chat_list, generation_llm_order
 from chatbot_core.chat_logger import (
     clear_global_memory,
     delete_conversation,
     ensure_conversation,
     get_conversation_messages,
     get_global_memory,
+    get_recent_interactions,
     list_conversations,
     log_question,
     pin_conversation,
@@ -63,6 +65,11 @@ from chatbot_core.memory_extractor import (
     extract_remember_command,
     warm_memory_from_history,
 )
+from chatbot_core.query_expander import (
+    dedupe_documents,
+    expand_query_with_llm,
+)
+from chatbot_core.reranking import rerank_documents
 from chatbot_core.conversation_titler import make_conversation_title
 from chatbot_core.grade_simulator import (
     SIMULATOR_TRIGGER,
@@ -89,6 +96,8 @@ VLLM_API_BASE = os.getenv("VLLM_BASE_URL") or os.getenv("VLLM_API_BASE", "http:/
 VLLM_API_KEY = os.getenv("VLLM_API_KEY", "unused")
 RERANKER_API_BASE = os.getenv("RERANKER_API_BASE", "http://localhost:8001")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "Qwen/Qwen3-Reranker-4B")
+LOCAL_RERANKER_ENABLED = os.getenv("LOCAL_RERANKER_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+LOCAL_RERANKER_MODEL = os.getenv("LOCAL_RERANKER_MODEL", "BAAI/bge-reranker-base")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "3"))
 VLLM_TIMEOUT = int(os.getenv("VLLM_TIMEOUT", "5"))
@@ -186,6 +195,7 @@ SUGGESTION_ICONS = {
     "pin": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="m9 3 6 0 1 5 3 3-4 1H9l-4-1 3-3z"/></svg>',
     "plus": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>',
     "graduation": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10 12 5 2 10l10 5 10-5z"/><path d="M6 12v5a6 6 0 0 0 12 0v-5"/></svg>',
+    "shield": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 20 6.5v5.8c0 5-3.2 8.2-8 9.7-4.8-1.5-8-4.7-8-9.7V6.5L12 3Z"/><path d="M9 8.5h6M8.5 11.5h7M9 14.5h6"/></svg>',
     "copy": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
     "refresh": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>',
     "memory": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V7a3 3 0 0 1 3-3z"/><path d="M9 9h6M9 13h4"/></svg>',
@@ -194,7 +204,7 @@ SUGGESTION_ICONS = {
     "spark": '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3v4M3 5h4M19 13v6M16 16h6M14 4l1.5 4L19 9l-3.5 1L14 14l-1.5-4L9 9l3.5-1z"/></svg>',
 }
 
-st.set_page_config(page_title="M1 AMIS Assistant", page_icon="🎓", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="M1 AMIS Assistant", page_icon=":material/school:", layout="wide", initial_sidebar_state="expanded")
 inject_chatbot_theme()
 inject_sidebar_reopen_button()
 
@@ -208,6 +218,27 @@ def _cached_conversations(limit: int = 30) -> list[dict]:
     return [dict(row) for row in list_conversations(limit=limit)]
 
 
+@st.cache_data(ttl=30)
+def _cached_recent_prompts(limit: int = 4) -> list[dict[str, str]]:
+    prompts: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for row in get_recent_interactions(limit=40):
+        question = " ".join(str(dict(row).get("question") or "").split())
+        if len(question) < 8:
+            continue
+        lowered = question.lower()
+        if lowered.startswith(("calculer ma moyenne", "simulateur de notes")):
+            continue
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        label = question if len(question) <= 86 else question[:83].rstrip() + "…"
+        prompts.append({"label": label, "prompt": question})
+        if len(prompts) >= limit:
+            break
+    return prompts
+
+
 @st.cache_data(ttl=5)
 def _cached_memory(_cache_buster: int = 0) -> dict:
     """Return the global student memory shared across all conversations."""
@@ -216,6 +247,49 @@ def _cached_memory(_cache_buster: int = 0) -> dict:
 
 
 ADMIN_SETTINGS = _cached_settings()
+
+
+def _path_size(path: Path) -> int:
+    try:
+        if path.is_file():
+            return path.stat().st_size
+        if not path.exists():
+            return 0
+        total = 0
+        for item in path.rglob("*"):
+            try:
+                if item.is_file():
+                    total += item.stat().st_size
+            except OSError:
+                continue
+        return total
+    except OSError:
+        return 0
+
+
+def _format_size(size: int) -> str:
+    value = float(size)
+    for unit in ("B", "KB", "MB", "GB"):
+        if value < 1024 or unit == "GB":
+            return f"{value:.1f} {unit}" if unit != "B" else f"{int(value)} B"
+        value /= 1024
+    return f"{value:.1f} GB"
+
+
+@st.cache_data(ttl=30)
+def _storage_snapshot() -> dict[str, int | float]:
+    targets = [
+        PROJECT_ROOT / "chat_logs.db",
+        PROJECT_ROOT / "chroma_db",
+        PROJECT_ROOT / "data",
+        PROJECT_ROOT / "evaluation_chatbot",
+        PROJECT_ROOT / "generated_reports",
+    ]
+    used = sum(_path_size(path) for path in targets)
+    quota_mb = int(os.getenv("M1_ASSISTANT_STORAGE_QUOTA_MB", "3072"))
+    quota = max(quota_mb, 1) * 1024 * 1024
+    percent = min(100.0, (used / quota) * 100) if quota else 0.0
+    return {"used": used, "quota": quota, "percent": percent}
 
 
 def _memory_chips_html(profile: str, max_chips: int = 10) -> str:
@@ -298,11 +372,11 @@ def load_retriever(top_k: int):
 
 
 def resolve_llm_chain(settings: dict) -> list:
-    """Return an ordered list of *reachable* LLM clients.
+    """Return the release LLM order.
 
-    Critically: a vLLM client is only kept when its health probe succeeds.
-    This prevents the 5-10 second timeout that used to fire on every chat
-    answer when no vLLM server is running locally.
+    In ``auto`` mode the app tries Gemini first, then optional
+    OpenAI-compatible gateways, then the UVSQ/vLLM server as backup. Manual
+    modes still let the admin force a specific backend.
     """
     temperature = float(settings.get("temperature", 0.1))
     max_tokens = int(settings.get("max_tokens", 800))
@@ -328,6 +402,12 @@ def resolve_llm_chain(settings: dict) -> list:
     def maybe_gemini():
         return build_gemini_chat(gemini_model, temperature)
 
+    def maybe_openai_compat():
+        return build_all_openai_compat_chat_list(
+            temperature=temperature,
+            max_tokens=max_tokens,
+        )
+
     chain: list = []
     if backend == "vllm":
         chain = [maybe_vllm(force=True)]
@@ -336,7 +416,12 @@ def resolve_llm_chain(settings: dict) -> list:
     elif backend == "gemini":
         chain = [maybe_gemini()]
     else:
-        chain = [maybe_vllm(), maybe_fallback(), maybe_gemini()]
+        chain = generation_llm_order(
+            vllm_reachable=is_vllm_up(),
+            vllm_llm=maybe_vllm(force=True),
+            openai_compat_llms=[*maybe_openai_compat(), maybe_fallback()],
+            tertiary_llm=maybe_gemini(),
+        )
     return [client for client in chain if client is not None]
 
 
@@ -396,35 +481,18 @@ def clean_answer_text(text: str) -> str:
 
 
 def rerank(query: str, docs, top_k: int, enabled: bool):
-    if not docs:
-        return docs
-    if not enabled or not is_reranker_up():
-        return docs[:top_k]
-    documents = [doc.page_content for doc in docs]
-    endpoints = [
-        (f"{RERANKER_API_BASE}/v1/rerank", {"model": RERANKER_MODEL, "query": query, "documents": documents, "top_n": min(top_k, len(documents))}),
-        (f"{RERANKER_API_BASE}/rerank", {"model": RERANKER_MODEL, "query": query, "documents": documents, "top_n": min(top_k, len(documents))}),
-        (f"{RERANKER_API_BASE}/score", {"model": RERANKER_MODEL, "queries": [query] * len(documents), "documents": documents}),
-    ]
-    for endpoint, payload in endpoints:
-        try:
-            resp = requests.post(endpoint, json=payload, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
-            body = resp.json()
-            if "results" in body:
-                ranked_docs = [docs[item["index"]] for item in body["results"][:top_k]]
-                if ranked_docs:
-                    return ranked_docs
-            if "data" in body:
-                scores = [item.get("score", item.get("relevance_score", 0.0)) for item in body["data"]]
-                if len(scores) == len(docs):
-                    ranked = sorted(zip(scores, docs), key=lambda pair: pair[0], reverse=True)
-                    return [doc for _, doc in ranked[:top_k]]
-        except requests.RequestException:
-            continue
-        except (KeyError, TypeError, ValueError):
-            continue
-    return docs[:top_k]
+    return rerank_documents(
+        query,
+        docs,
+        top_k=top_k,
+        enabled=enabled,
+        server_base=RERANKER_API_BASE,
+        server_model=RERANKER_MODEL,
+        request_timeout=REQUEST_TIMEOUT,
+        server_available=is_reranker_up,
+        local_enabled=LOCAL_RERANKER_ENABLED,
+        local_model=LOCAL_RERANKER_MODEL,
+    )
 
 
 _TOOLBAR_ICON_CSS = """
@@ -589,7 +657,7 @@ def render_assistant_actions(
                 icon=":material/refresh:",
                 key=f"{key_prefix}_regen",
                 help="Regénérer cette réponse (relance la même question)",
-                use_container_width=True,
+                width="stretch",
             ):
                 prev = st.session_state.messages[message_index - 1]
                 if prev.get("role") == "user":
@@ -618,7 +686,7 @@ def render_assistant_actions(
             icon=":material/thumb_up:",
             key=f"{key_prefix}_like",
             help="Bonne réponse",
-            use_container_width=True,
+            width="stretch",
             type="primary" if selected == "liked" else "secondary",
         ):
             update_feedback(log_id, "liked")
@@ -630,7 +698,7 @@ def render_assistant_actions(
             icon=":material/thumb_down:",
             key=f"{key_prefix}_dislike",
             help="Mauvaise réponse",
-            use_container_width=True,
+            width="stretch",
             type="primary" if selected == "disliked" else "secondary",
         ):
             update_feedback(log_id, "disliked")
@@ -728,7 +796,7 @@ def render_file_downloads(files: list[dict[str, object]], key_prefix: str, use_c
             file_name=str(file_info["file_name"]),
             mime=str(file_info["mime"]),
             key=f"{key_prefix}_{index}_{key_id}",
-            use_container_width=use_container_width,
+            width="stretch" if use_container_width else "content",
         )
 
 
@@ -1243,6 +1311,8 @@ def render_moyenne_wizard(parcours_hint: str | None) -> str | None:
 retrieval_top_k = int(ADMIN_SETTINGS.get("retrieval_top_k", 12))
 final_context_k = int(ADMIN_SETTINGS.get("final_context_k", 5))
 reranking_enabled = bool(ADMIN_SETTINGS.get("reranking_enabled", True))
+query_expansion_enabled = bool(ADMIN_SETTINGS.get("query_expansion_enabled", False))
+query_expansion_max_variants = int(ADMIN_SETTINGS.get("query_expansion_max_variants", 3))
 
 # Retriever and LLM chain are intentionally NOT initialised at boot. They are
 # expensive (bge-m3 weights ~2GB, vLLM probe, etc.) and are only useful when a
@@ -1302,10 +1372,23 @@ memory_enabled = bool(memory["enabled"]) if memory_feature_enabled else False
 profile = str(memory["profile"] or "") if (memory_feature_enabled and memory_enabled) else ""
 
 with st.sidebar:
+    st.markdown(
+        f"""
+        <div class="sidebar-brand">
+          <div class="sidebar-brand-mark">{SUGGESTION_ICONS["shield"]}</div>
+          <div>
+            <div class="sidebar-brand-name">UVSQ</div>
+            <div class="sidebar-brand-subtitle">Université Paris-Saclay</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     if st.button(
         "Nouvelle conversation",
         icon=":material/add:",
-        use_container_width=True,
+        width="stretch",
         key="sidebar_new_conv",
         type="primary",
     ):
@@ -1319,7 +1402,7 @@ with st.sidebar:
         if st.button(
             "Calculer ma moyenne",
             icon=":material/calculate:",
-            use_container_width=True,
+            width="stretch",
             key="sidebar_open_moyenne",
         ):
             _start_moyenne_wizard(parcours_hint)
@@ -1328,7 +1411,7 @@ with st.sidebar:
         if st.button(
             "Fermer le calculateur",
             icon=":material/close:",
-            use_container_width=True,
+            width="stretch",
             key="sidebar_close_moyenne",
         ):
             _close_moyenne_wizard()
@@ -1337,7 +1420,7 @@ with st.sidebar:
     if st.button(
         "Simulateur Et si…",
         icon=":material/tune:",
-        use_container_width=True,
+        width="stretch",
         key="sidebar_open_simulator",
         help="Ajustez les notes en direct et visualisez la validation.",
     ):
@@ -1365,12 +1448,12 @@ with st.sidebar:
             )
             col_save, col_clear = st.columns(2)
             with col_save:
-                if st.button("Enregistrer", use_container_width=True, key="memory_save"):
+                if st.button("Enregistrer", width="stretch", key="memory_save"):
                     save_global_memory(memory_enabled, profile)
                     _cached_memory.clear()
                     st.toast("Mémoire enregistrée")
             with col_clear:
-                if st.button("Vider", use_container_width=True, key="memory_clear"):
+                if st.button("Vider", width="stretch", key="memory_clear"):
                     clear_global_memory()
                     _cached_memory.clear()
                     st.toast("Mémoire vidée")
@@ -1413,7 +1496,7 @@ with st.sidebar:
                     title,
                     icon=row_icon,
                     key=f"conv_open_{sid}",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary" if is_active else "secondary",
                     help=f"Mise à jour: {conv['updated_at']}",
                 ):
@@ -1425,7 +1508,7 @@ with st.sidebar:
                     icon=":material/push_pin:",
                     key=f"conv_pin_{sid}",
                     help="Désépingler" if conv["pinned"] else "Épingler",
-                    use_container_width=True,
+                    width="stretch",
                     type="primary" if conv["pinned"] else "secondary",
                 ):
                     pin_conversation(sid, not bool(conv["pinned"]))
@@ -1437,7 +1520,7 @@ with st.sidebar:
                     icon=":material/delete:",
                     key=f"conv_del_{sid}",
                     help="Supprimer la conversation",
-                    use_container_width=True,
+                    width="stretch",
                 ):
                     delete_conversation(sid)
                     _cached_conversations.clear()
@@ -1451,6 +1534,24 @@ with st.sidebar:
             '<div class="empty-state-sidebar">Aucune conversation enregistrée pour le moment.</div>',
             unsafe_allow_html=True,
         )
+
+    storage = _storage_snapshot()
+    storage_used = int(storage["used"])
+    storage_quota = int(storage["quota"])
+    storage_percent = float(storage["percent"])
+    st.markdown(
+        f"""
+        <div class="storage-meter">
+          <div class="storage-top">
+            <span>Espace utilisé</span>
+            <strong>{storage_percent:.0f}%</strong>
+          </div>
+          <div class="storage-track"><span style="width:{storage_percent:.1f}%"></span></div>
+          <div class="storage-caption">{html.escape(_format_size(storage_used))} / {html.escape(_format_size(storage_quota))}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.divider()
     if export_enabled:
@@ -1469,6 +1570,11 @@ hero_mark_html = (
 st.markdown(
     f"""
     <div class="app-hero">
+      <div class="hero-status-card">
+        <span class="hero-status-dot"></span>
+        <span class="hero-status-title">En ligne</span>
+        <span class="hero-status-model">Modèle: {html.escape(str(ADMIN_SETTINGS.get("gemini_model") or "Gemini 2.5 Flash"))}</span>
+      </div>
       <div class="hero-version">Master 1 · Informatique · UVSQ / Université Paris-Saclay</div>
       <div class="hero-flex">
         <div class="hero-mark">{hero_mark_html}</div>
@@ -1561,15 +1667,36 @@ if not st.session_state.messages and suggestions_enabled:
     for index, item in enumerate(SUGGESTIONS):
         with cols[index % 2]:
             if st.button(
-                item["title"],
+                f"{item['title']}\n{item.get('subtitle', '')}",
                 icon=item.get("icon"),
                 key=f"suggestion_{index}",
-                use_container_width=True,
+                width="stretch",
                 help=item.get("subtitle") or item.get("prompt", ""),
             ):
                 st.session_state["_pending_input"] = item["prompt"]
                 st.rerun()
-            st.caption(item.get("subtitle", ""))
+    recent_prompts = _cached_recent_prompts()
+    if recent_prompts:
+        st.markdown(
+            """
+            <div class="recent-suggestions-card">
+              <h3>Suggestions récentes</h3>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        recent_cols = st.columns(len(recent_prompts))
+        for index, item in enumerate(recent_prompts):
+            with recent_cols[index]:
+                if st.button(
+                    item["label"],
+                    icon=":material/history:",
+                    key=f"recent_suggestion_{index}",
+                    width="stretch",
+                    help=item["prompt"],
+                ):
+                    st.session_state["_pending_input"] = item["prompt"]
+                    st.rerun()
 
 wizard_result = render_moyenne_wizard(parcours_hint)
 if wizard_result:
@@ -1842,9 +1969,34 @@ if user_input:
                 docs = []
             else:
                 with st.status("Recherche dans les documents…", expanded=False) as status:
+                    retrieval_history = build_session_history(
+                        st.session_state.messages,
+                        recent_turns=10,
+                        max_chars_per_turn=450,
+                        max_chars=3500,
+                        older_snippets=4,
+                        include_current_user_message=False,
+                    )
+                    queries = [user_input]
+                    if query_expansion_enabled:
+                        queries = expand_query_with_llm(
+                            user_input,
+                            history=retrieval_history,
+                            llm_chain=get_llm_chain(),
+                            max_variants=query_expansion_max_variants,
+                        )
+                        if len(queries) > 1:
+                            tools_used.append("query_expansion")
+                            details_parts.append(
+                                "La recherche RAG a utilisé des reformulations de la question pour récupérer un contexte plus robuste."
+                            )
+                            status.update(label=f"Recherche avec {len(queries)} variantes…", state="running")
+                    retrieved_docs = []
+                    for query in queries:
+                        retrieved_docs.extend(retriever.invoke(query))
                     docs = rerank(
                         user_input,
-                        retriever.invoke(user_input),
+                        dedupe_documents(retrieved_docs),
                         top_k=final_context_k,
                         enabled=reranking_enabled,
                     )

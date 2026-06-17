@@ -10,8 +10,10 @@ something like ``souviens-toi que ...``, ``n'oublie pas que ...``,
 ``remember that ...`` or ``/remember ...``. These are caught by
 :func:`extract_remember_command` and saved verbatim under ``Note : ...``.
 
-The extractor is intentionally conservative: it only adds *new* facts, never
-overwrites a finer-grained line, and stays out of the way for unrelated chat.
+The extractor is intentionally conservative for unrelated chat, but explicit
+profile facts are treated as the latest truth. If the user first says
+``my name is Abdelkarim`` and later says ``my new name is Riadh``, the stored
+``Nom : ...`` line is replaced instead of duplicated.
 """
 
 from __future__ import annotations
@@ -48,14 +50,19 @@ _PARCOURS_PATTERNS = [
 
 # Up to "stop" tokens we use to cut a captured group cleanly (comma, end of
 # sentence, conjunctions, "en status ..." trailing phrase, etc.).
-_STOP_GROUP = r"(?:[,;.!?]|\bet\b|\band\b|\s+en\s+(?:statut|status)\b|$)"
+_STOP_GROUP = r"(?:[,;.!?]|\bet\b|\band\b|\bou\b|\bor\b|\s+en\s+(?:statut|status)\b|$)"
 
 _NAME_PATTERNS = [
+    re.compile(rf"\b(?:mon\s+nouveau\s+nom|mon\s+nouveau\s+prenom|mon\s+nouveau\s+prénom)\s+(?:est|c['’]est)\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
+    re.compile(rf"\b(?:my\s+new\s+name|my\s+new\s+first\s+name)\s+is\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
+    re.compile(rf"\b(?:change|update|set)\s+my\s+name\s+(?:to|as)\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
+    re.compile(rf"\b(?:appelle[-\s]?moi|appelez[-\s]?moi)\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
     re.compile(rf"\bje\s+m['’]\s*appelle\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
     re.compile(rf"\bmon\s+(?:nom|prenom|prénom)(?:\s+complet)?\s+(?:est|c['’]est)\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
-    # Friendly catch for the typo "mon est X" (missing "nom").
+    # Lenient catch for the typo "mon est X" (missing "nom").
     re.compile(rf"\bmon\s+est\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
     re.compile(rf"\bmy\s+name\s+is\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
+    re.compile(rf"\bnow\s+my\s+name\s+is\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
     re.compile(rf"\bi['’]m\s+called\s+(?P<value>[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ\-\s]*?){_STOP_GROUP}", re.IGNORECASE),
 ]
 
@@ -136,6 +143,19 @@ def _existing_lines(profile: str) -> list[str]:
 
 def _has_line(profile: str, prefix: str) -> bool:
     return any(line.lower().startswith(prefix.lower()) for line in _existing_lines(profile))
+
+
+def _existing_value(profile: str, *prefixes: str) -> str:
+    for line in _existing_lines(profile):
+        lowered = line.lower()
+        if any(lowered.startswith(prefix.lower()) for prefix in prefixes):
+            return line.split(":", 1)[-1].strip() if ":" in line else ""
+    return ""
+
+
+def _should_store_value(profile: str, value: str, *prefixes: str) -> bool:
+    existing = _existing_value(profile, *prefixes)
+    return bool(value) and _normalize(existing) != _normalize(value)
 
 
 def _normalize(text: str) -> str:
@@ -268,11 +288,11 @@ def extract_facts(text: str, existing_profile: str = "") -> list[str]:
     normalized = _normalize(text)
 
     name = _capture_name(text)
-    if name and not _has_line(existing_profile, "Nom :"):
+    if _should_store_value(existing_profile, name, "Nom :"):
         facts.append(f"Nom : {name}")
 
     age = _capture_age(text)
-    if age and not _has_line(existing_profile, "Âge :") and not _has_line(existing_profile, "Age :"):
+    if _should_store_value(existing_profile, age, "Âge :", "Age :"):
         facts.append(f"Âge : {age}")
 
     locations = _capture_locations(text)
@@ -299,7 +319,7 @@ def extract_facts(text: str, existing_profile: str = "") -> list[str]:
             facts.append("Lieu : " + ", ".join(ordered))
 
     status = _capture_status(text)
-    if status and not _has_line(existing_profile, "Statut :"):
+    if _should_store_value(existing_profile, status, "Statut :"):
         facts.append(f"Statut : {status}")
 
     parcours = infer_parcours(text)
@@ -310,11 +330,16 @@ def extract_facts(text: str, existing_profile: str = "") -> list[str]:
                 parcours = infer_parcours(match.group(1))
                 if parcours:
                     break
-    if parcours and not _has_line(existing_profile, "Parcours :"):
+    if _should_store_value(existing_profile, parcours or "", "Parcours :"):
         facts.append(f"Parcours : {parcours}")
 
     for pattern, line in _SEMESTER_HINTS:
-        if pattern.search(text) and not _has_line(existing_profile, "Semestre"):
+        if pattern.search(text) and _should_store_value(
+            existing_profile,
+            line.split(":", 1)[-1].strip(),
+            "Semestre actuel :",
+            "Semestre :",
+        ):
             facts.append(line)
             break
 
@@ -335,7 +360,7 @@ def extract_facts(text: str, existing_profile: str = "") -> list[str]:
             facts.append(line)
 
     ter_enc = _capture_ter_encadrant(text)
-    if ter_enc and not _has_line(existing_profile, "Encadrant TER"):
+    if _should_store_value(existing_profile, ter_enc, "Encadrant TER"):
         facts.append(f"Encadrant TER : {ter_enc}")
 
     return facts
@@ -345,8 +370,35 @@ def _apply_facts(profile: str, facts: Iterable[str]) -> str:
     new_profile_lines = _existing_lines(profile)
     for fact in facts:
         lower = fact.lower()
+        # Replace single-value facts when the user gives a newer value.
+        if lower.startswith("nom"):
+            new_profile_lines = [
+                line for line in new_profile_lines if not line.lower().startswith("nom")
+            ]
+        elif lower.startswith("âge") or lower.startswith("age"):
+            new_profile_lines = [
+                line
+                for line in new_profile_lines
+                if not (line.lower().startswith("âge") or line.lower().startswith("age"))
+            ]
+        elif lower.startswith("statut"):
+            new_profile_lines = [
+                line for line in new_profile_lines if not line.lower().startswith("statut")
+            ]
+        elif lower.startswith("parcours"):
+            new_profile_lines = [
+                line for line in new_profile_lines if not line.lower().startswith("parcours")
+            ]
+        elif lower.startswith("semestre"):
+            new_profile_lines = [
+                line for line in new_profile_lines if not line.lower().startswith("semestre")
+            ]
+        elif lower.startswith("encadrant ter"):
+            new_profile_lines = [
+                line for line in new_profile_lines if not line.lower().startswith("encadrant ter")
+            ]
         # Replace any previous "UEs choisies" or "Lieu" line if a newer one is broader.
-        if lower.startswith("ues choisies"):
+        elif lower.startswith("ues choisies"):
             new_profile_lines = [
                 line for line in new_profile_lines if not line.lower().startswith("ues choisies")
             ]

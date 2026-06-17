@@ -9,8 +9,12 @@ Ce fichier resume les principales fonctionnalites actuellement presentes dans le
 - Repond aux questions a partir de la base documentaire locale.
 - Utilise ChromaDB pour stocker et rechercher les documents vectorises.
 - Utilise des embeddings HuggingFace pour la recherche semantique.
+- Utilise Gemini comme backend principal par defaut, avec le serveur vLLM UVSQ comme secours.
+- Supporte des passerelles OpenAI-compatibles optionnelles entre Gemini et le serveur de secours.
 - Affiche les sources consultees quand une reponse utilise des documents.
 - Supporte le reranking quand l'API du reranker est activee.
+- Utilise un fallback reranker local `BAAI/bge-reranker-base` si le serveur reranker n'est pas disponible.
+- Peut utiliser un re-asker / expansion de requete optionnel pour reformuler une question avant la recherche documentaire, sans cle hardcodee.
 - Peut quand meme repondre avec le contexte de conversation, la memoire ou les fichiers joints si la recherche documentaire n'est pas disponible.
 
 ### Memoire Etudiante
@@ -47,6 +51,7 @@ Ce fichier resume les principales fonctionnalites actuellement presentes dans le
 ### Calculateur De Moyenne
 
 - Assistant guide pour calculer les moyennes du M1 Informatique.
+- Calcul direct depuis le chat quand l'utilisateur donne des notes dans son message, par exemple `bd 12, reseaux 13, crypto 14`.
 - Detection du parcours depuis la question ou depuis la memoire.
 - Calculs possibles par semestre, annee ou UE.
 - Gestion des regles par parcours.
@@ -152,6 +157,7 @@ Ce fichier resume les principales fonctionnalites actuellement presentes dans le
 - Nettoyage de la base vectorielle.
 - Creation manuelle d'entrees de connaissance depuis le dashboard.
 - Sauvegarde des entrees manuelles en Markdown dans `data/admin_entries/`.
+- Ajout possible des corrections admin dans `data/admin_corrections.md`.
 
 ### Onglet Settings
 
@@ -182,6 +188,7 @@ Ce fichier resume les principales fonctionnalites actuellement presentes dans le
   - nombre de documents recuperes
   - nombre de documents gardes apres reranking
   - nombre final de contextes envoyes au modele
+  - expansion de requete optionnelle
   - taille maximale du texte extrait des fichiers joints
 - Sauvegarde des reglages sans redemarrer l'application.
 - Reinitialisation des reglages par defaut.
@@ -211,6 +218,7 @@ Ce fichier resume les principales fonctionnalites actuellement presentes dans le
 - Base SQLite pour les conversations, logs, feedbacks et memoire etudiante.
 - Base ChromaDB pour la recherche RAG.
 - Corrections admin reinjectables dans la base de connaissance.
+- Smart chunking optionnel avec Gemini pour generer une configuration YAML de decoupage par document.
 - Configuration locale avec le fichier `.env`.
 - Modele de configuration disponible dans `.env.example`.
 - Guide d'installation dans `setup.md`.

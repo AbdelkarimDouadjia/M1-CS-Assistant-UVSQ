@@ -2,7 +2,7 @@
 # evaluate_chatbot.py - Evaluation avancee du chatbot (pipeline chatbot)
 # ================================================================
 # Cette version conserve:
-# - le meme pipeline de reponse que chatbot.py (retrieval + rerank + vLLM/fallback)
+# - le meme pipeline de reponse que chatbot.py (retrieval + rerank + Gemini/vLLM fallback)
 # - les memes familles de scores qu'avant simplification:
 #   rag_score, judge_score, hybrid_score
 # ================================================================
@@ -26,6 +26,7 @@ from langchain_openai import ChatOpenAI
 
 from chatbot_core.unanswered_detection import is_unanswered_response
 from chatbot_core.llm_backends import build_all_openai_compat_chat_list, generation_llm_order
+from chatbot_core.reranking import rerank_documents
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 EVALUATION_DIR = PROJECT_ROOT / "evaluation_chatbot"
@@ -49,6 +50,8 @@ VLLM_API_KEY = os.getenv("VLLM_API_KEY", "unused")
 RERANKER_API_BASE = os.getenv("RERANKER_API_BASE", "http://localhost:8001")
 RERANKER_MODEL = os.getenv("RERANKER_MODEL", "Qwen/Qwen3-Reranker-4B")
 RERANKING_ENABLED = os.getenv("RERANKING_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+LOCAL_RERANKER_ENABLED = os.getenv("LOCAL_RERANKER_ENABLED", "true").lower() in {"1", "true", "yes", "on"}
+LOCAL_RERANKER_MODEL = os.getenv("LOCAL_RERANKER_MODEL", "BAAI/bge-reranker-base")
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 RETRIEVAL_TOP_K = int(os.getenv("RETRIEVAL_TOP_K", "12"))
@@ -57,6 +60,7 @@ GENERATION_TEMPERATURE = float(os.getenv("GENERATION_TEMPERATURE", "0.1"))
 GENERATION_MAX_TOKENS = int(os.getenv("GENERATION_MAX_TOKENS", "800"))
 REQUEST_TIMEOUT = int(os.getenv("REQUEST_TIMEOUT", "5"))
 VLLM_TIMEOUT = int(os.getenv("VLLM_TIMEOUT", "10"))
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 
 # ================================================================
@@ -90,15 +94,20 @@ def build_vllm_chat(model_name: str) -> ChatOpenAI:
     )
 
 
-def build_fallback_chat() -> Any:
-    if FALLBACK_MODEL:
-        return build_vllm_chat(FALLBACK_MODEL)
+def build_gemini_chat() -> Any:
     if os.getenv("GEMINI_API_KEY"):
         return ChatGoogleGenerativeAI(
             temperature=GENERATION_TEMPERATURE,
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
         )
     return None
+
+
+def build_server_backup_llms() -> List[Any]:
+    backups: List[Any] = [build_vllm_chat(VLLM_MODEL)]
+    if FALLBACK_MODEL and FALLBACK_MODEL != VLLM_MODEL:
+        backups.append(build_vllm_chat(FALLBACK_MODEL))
+    return backups
 
 
 def extract_source_name(source: str) -> str:
@@ -138,67 +147,18 @@ def build_sources_block(docs) -> str:
 
 
 def rerank(query: str, docs, top_k: int = FINAL_CONTEXT_K):
-    if not docs:
-        return docs
-    if not RERANKING_ENABLED or not is_reranker_up():
-        return docs[:top_k]
-
-    documents = [doc.page_content for doc in docs]
-    # On tente plusieurs routes API pour rester compatible avec
-    # differents serveurs de reranking.
-    endpoints = [
-        (
-            f"{RERANKER_API_BASE}/v1/rerank",
-            {
-                "model": RERANKER_MODEL,
-                "query": query,
-                "documents": documents,
-                "top_n": min(top_k, len(documents)),
-            },
-        ),
-        (
-            f"{RERANKER_API_BASE}/rerank",
-            {
-                "model": RERANKER_MODEL,
-                "query": query,
-                "documents": documents,
-                "top_n": min(top_k, len(documents)),
-            },
-        ),
-        (
-            f"{RERANKER_API_BASE}/score",
-            {
-                "model": RERANKER_MODEL,
-                "queries": [query] * len(documents),
-                "documents": documents,
-            },
-        ),
-    ]
-
-    for endpoint, payload in endpoints:
-        try:
-            resp = requests.post(endpoint, json=payload, timeout=REQUEST_TIMEOUT)
-            resp.raise_for_status()
-            body = resp.json()
-
-            if "results" in body:
-                ranked_docs = []
-                for item in body["results"][:top_k]:
-                    ranked_docs.append(docs[item["index"]])
-                if ranked_docs:
-                    return ranked_docs
-
-            if "data" in body:
-                scores = [item.get("score", item.get("relevance_score", 0.0)) for item in body["data"]]
-                if len(scores) == len(docs):
-                    ranked = sorted(zip(scores, docs), key=lambda pair: pair[0], reverse=True)
-                    return [doc for _, doc in ranked[:top_k]]
-        except requests.RequestException:
-            continue
-        except (KeyError, TypeError, ValueError):
-            continue
-
-    return docs[:top_k]
+    return rerank_documents(
+        query,
+        docs,
+        top_k=top_k,
+        enabled=RERANKING_ENABLED,
+        server_base=RERANKER_API_BASE,
+        server_model=RERANKER_MODEL,
+        request_timeout=REQUEST_TIMEOUT,
+        server_available=is_reranker_up,
+        local_enabled=LOCAL_RERANKER_ENABLED,
+        local_model=LOCAL_RERANKER_MODEL,
+    )
 
 
 def is_unanswered(response: str) -> bool:
@@ -284,12 +244,12 @@ def load_models() -> Tuple[Any, Any, Any, Any, HuggingFaceEmbeddings]:
         encode_kwargs={"normalize_embeddings": True},
     )
 
-    primary_llm = build_vllm_chat(VLLM_MODEL)
+    server_backup_llms = build_server_backup_llms()
     openai_compat_llms = build_all_openai_compat_chat_list(
         temperature=GENERATION_TEMPERATURE,
         max_tokens=GENERATION_MAX_TOKENS,
     )
-    fallback_llm = build_fallback_chat()
+    fallback_llm = build_gemini_chat()
 
     vector_store = Chroma(
         collection_name=COLLECTION_NAME,
@@ -299,7 +259,7 @@ def load_models() -> Tuple[Any, Any, Any, Any, HuggingFaceEmbeddings]:
     retriever = vector_store.as_retriever(search_kwargs={"k": RETRIEVAL_TOP_K})
 
     print("Modeles chatbot charges avec succes")
-    return primary_llm, openai_compat_llms, fallback_llm, retriever, embeddings_model
+    return server_backup_llms[0], [*openai_compat_llms, *server_backup_llms[1:]], fallback_llm, retriever, embeddings_model
 
 
 # ================================================================

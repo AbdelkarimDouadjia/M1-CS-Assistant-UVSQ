@@ -4,6 +4,7 @@ import gc
 from datetime import datetime
 from pathlib import Path
 from uuid import uuid4
+from collections import defaultdict
 
 # ================================================================
 # ingest_database.py - Ingestion des documents dans ChromaDB
@@ -27,6 +28,9 @@ from langchain_chroma import Chroma
 from langchain_community.document_loaders import DirectoryLoader, PyPDFDirectoryLoader, TextLoader
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+import yaml
+
+from chatbot_core.smart_parcing import SmartChunkingConfig
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -37,6 +41,8 @@ CHROMA_PATH = str(PROJECT_ROOT / "chroma_db")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-m3")
 CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "1200"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "150"))
+SMART_CHUNKING_ENABLED = os.getenv("SMART_CHUNKING_ENABLED", "false").lower() in {"1", "true", "yes", "on"}
+SMART_CHUNKING_MODEL = os.getenv("SMART_CHUNKING_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
 
 
 def load_documents():
@@ -91,8 +97,8 @@ def enrich_chunk(doc, chunk_id: str):
     doc.metadata["chunk_id"] = chunk_id
 
 
-def build_chunks(raw_documents):
-    text_splitter = RecursiveCharacterTextSplitter(
+def _default_text_splitter() -> RecursiveCharacterTextSplitter:
+    return RecursiveCharacterTextSplitter(
         separators=[
             "\n# ",
             "\n## ",
@@ -108,6 +114,48 @@ def build_chunks(raw_documents):
         chunk_size=CHUNK_SIZE,
         chunk_overlap=CHUNK_OVERLAP,
     )
+
+
+def _load_smart_splitter(source: str, smart: SmartChunkingConfig) -> RecursiveCharacterTextSplitter | None:
+    source_path = Path(source)
+    if source_path.suffix.lower() not in {".pdf", ".txt", ".md"}:
+        return None
+    yaml_path = source_path.with_name(f"{source_path.stem}_chunking_config.yaml")
+    try:
+        if not yaml_path.exists():
+            smart.generate(str(source_path))
+        config = yaml.safe_load(yaml_path.read_text(encoding="utf-8")) or {}
+        separators = config.get("separators")
+        chunk_size = int(config.get("chunk_size", CHUNK_SIZE))
+        chunk_overlap = int(config.get("chunk_overlap", CHUNK_OVERLAP))
+        if not isinstance(separators, list) or not separators:
+            return None
+        return RecursiveCharacterTextSplitter(
+            separators=[str(item) for item in separators],
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+            is_separator_regex=bool(config.get("is_separator_regex", False)),
+        )
+    except Exception as exc:
+        print(f"Smart chunking indisponible pour {source_path.name}: {exc}")
+        return None
+
+
+def build_chunks(raw_documents):
+    if not SMART_CHUNKING_ENABLED:
+        return _default_text_splitter().split_documents(raw_documents)
+
+    smart = SmartChunkingConfig(model_name=SMART_CHUNKING_MODEL)
+    fallback_splitter = _default_text_splitter()
+    docs_by_source: dict[str, list] = defaultdict(list)
+    for doc in raw_documents:
+        docs_by_source[str(doc.metadata.get("source") or "")].append(doc)
+
+    chunks = []
+    for source, docs_for_source in docs_by_source.items():
+        splitter = _load_smart_splitter(source, smart) if source else None
+        chunks.extend((splitter or fallback_splitter).split_documents(docs_for_source))
+    return chunks
     return text_splitter.split_documents(raw_documents)
 
 

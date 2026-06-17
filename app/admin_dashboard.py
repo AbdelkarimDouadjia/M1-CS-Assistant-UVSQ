@@ -3,7 +3,8 @@ from __future__ import annotations
 import json
 import os
 import sys
-from datetime import datetime
+import html
+from datetime import datetime, timedelta
 from pathlib import Path
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -40,8 +41,23 @@ from chatbot_core.ingest_database import DATA_PATH, clear_and_reingest
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-st.set_page_config(page_title="M1 Assistant Admin", page_icon="📊", layout="wide")
+st.set_page_config(page_title="M1 Assistant Admin", page_icon=":material/analytics:", layout="wide")
 st.markdown(DASHBOARD_CSS, unsafe_allow_html=True)
+
+
+ADMIN_ICONS = {
+    "shield": '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3 20 6.5v5.8c0 5-3.2 8.2-8 9.7-4.8-1.5-8-4.7-8-9.7V6.5L12 3Z"/><path d="M9 8.5h6M8.5 11.5h7M9 14.5h6"/></svg>',
+    "messages": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 6.5h14a2.5 2.5 0 0 1 2.5 2.5v5.5A2.5 2.5 0 0 1 19 17H11l-5 4v-4H5A2.5 2.5 0 0 1 2.5 14.5V9A2.5 2.5 0 0 1 5 6.5Z"/><path d="M7 10h10M7 13h6"/></svg>',
+    "check": '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m8.5 12.5 2.2 2.2 4.8-5.4"/></svg>',
+    "help": '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.2A2.8 2.8 0 0 1 12.1 7c1.7 0 3 1 3 2.6 0 2.4-3.1 2.2-3.1 4.4"/><path d="M12 17.5h.01"/></svg>',
+    "calendar": '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2.5"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>',
+    "thumb": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 21H4.8A1.8 1.8 0 0 1 3 19.2v-7.4A1.8 1.8 0 0 1 4.8 10H7v11Z"/><path d="M7 10l4.5-7c1.2.2 2 1 2 2.3V9h4.3a2.2 2.2 0 0 1 2.1 2.7l-1.5 6.8A3 3 0 0 1 15.5 21H7"/></svg>',
+    "wrench": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 7.5a6 6 0 0 1-7.4 7.4L7.1 21.4a2.2 2.2 0 0 1-3.1-3.1l6.5-6.5A6 6 0 0 1 17.9 4.4L14.5 7.8l1.7 1.7L19.6 6c.5.4 1 .9 1.4 1.5Z"/></svg>',
+    "arrow_up": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M9 7h8v8"/></svg>',
+    "arrow_down": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7 17 17M17 9v8H9"/></svg>',
+    "ok": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 12 3 3 7-7"/></svg>',
+    "info": '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v-6M12 7h.01"/></svg>',
+}
 
 
 @st.cache_data(ttl=30)
@@ -62,12 +78,80 @@ def load_evaluation_reports():
     return sorted(reports, key=lambda item: item["mtime"], reverse=True)
 
 
-def metric_card(label: str, value: str, accent: str = "#2563eb") -> None:
+def metric_card(
+    label: str,
+    value: str,
+    accent: str = "#2563eb",
+    icon: str = "messages",
+    trend: str = "Live data",
+    direction: str = "up",
+    comparison_label: str = "vs previous period",
+) -> None:
+    icon_html = ADMIN_ICONS.get(icon, ADMIN_ICONS["messages"])
+    arrow_html = ADMIN_ICONS["arrow_down"] if direction == "down" else ADMIN_ICONS["arrow_up"]
+    trend_class = "trend-down" if direction == "down" else "trend-up"
     st.markdown(
         f"""
         <div class="stat-card">
-            <div class="stat-label">{label}</div>
-            <div class="stat-value" style="color:{accent};">{value}</div>
+            <div class="stat-head">
+                <div class="stat-icon" style="background:{accent}18;color:{accent};">{icon_html}</div>
+                <div>
+                    <div class="stat-label">{html.escape(label)}</div>
+                    <div class="stat-value" style="color:{accent};">{html.escape(value)}</div>
+                </div>
+            </div>
+            <div class="stat-trend {trend_class}">
+                {arrow_html}
+                <strong>{html.escape(trend)}</strong>
+                <span>{html.escape(comparison_label)}</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _trim(text: str, limit: int = 130) -> str:
+    text = " ".join((text or "").split())
+    return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
+
+
+def _source_label(row) -> str:
+    tools = clean_cell(row_value(row, "tools_used"))
+    if "rag" in tools.lower():
+        return "RAG"
+    if "image" in tools.lower() or "vision" in tools.lower():
+        return "Vision"
+    if "grade" in tools.lower():
+        return "Calculator"
+    if "memory" in tools.lower():
+        return "Memory"
+    if "file" in tools.lower() or "upload" in tools.lower():
+        return "Files"
+    return "Chat"
+
+
+def _question_tags(question: str) -> list[str]:
+    lowered = (question or "").lower()
+    rules = [
+        ("Scolarité", ("scolarité", "certificat", "inscription", "démarche", "demarche")),
+        ("Bourses", ("bourse", "crous")),
+        ("Logement", ("logement", "résidence", "residence")),
+        ("Calendrier", ("jury", "date", "calendrier", "semestre")),
+        ("Notes", ("moyenne", "note", "compensation", "bcc", "ue")),
+        ("International", ("international", "étranger", "etranger")),
+        ("Services", ("carte", "bibliothèque", "bibliotheque", "restaurant")),
+    ]
+    tags = [label for label, needles in rules if any(item in lowered for item in needles)]
+    return tags[:3] or ["Question", "À traiter"]
+
+
+def render_section_title(title: str, count: int | str) -> None:
+    st.markdown(
+        f"""
+        <div class="section-title-row">
+          <h2 class="section-title">{html.escape(title)}</h2>
+          <span class="count-pill">{html.escape(str(count))}</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -87,6 +171,129 @@ def clean_cell(value) -> str:
     except TypeError:
         pass
     return str(value)
+
+
+def row_value(row, key: str, default: str = ""):
+    try:
+        return row[key]
+    except Exception:
+        if hasattr(row, "get"):
+            return row.get(key, default)
+        return default
+
+
+def _prepare_logs_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    prepared = df.copy()
+    timestamp_col = prepared["timestamp"] if "timestamp" in prepared else pd.Series(pd.NaT, index=prepared.index)
+    prepared["_timestamp_dt"] = pd.to_datetime(timestamp_col, errors="coerce")
+    return prepared
+
+
+def _normalize_period(value) -> tuple[datetime.date, datetime.date]:
+    today = datetime.now().date()
+    default_start = today - timedelta(days=43)
+    if isinstance(value, (tuple, list)):
+        selected = [item for item in value if item is not None]
+        if len(selected) >= 2:
+            start, end = selected[0], selected[1]
+        elif len(selected) == 1:
+            start = end = selected[0]
+        else:
+            start, end = default_start, today
+    else:
+        start = end = value or today
+    if start > end:
+        start, end = end, start
+    return start, end
+
+
+def _filter_logs_by_period(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
+    if df.empty:
+        return df.copy()
+    prepared = _prepare_logs_df(df) if "_timestamp_dt" not in df.columns else df.copy()
+    start_ts = pd.Timestamp(start_date)
+    end_ts = pd.Timestamp(end_date) + pd.Timedelta(days=1) - pd.Timedelta(microseconds=1)
+    return prepared[prepared["_timestamp_dt"].between(start_ts, end_ts, inclusive="both")].copy()
+
+
+def _snapshot(df: pd.DataFrame) -> dict[str, float | int]:
+    if df.empty:
+        return {
+            "total": 0,
+            "answered": 0,
+            "unanswered": 0,
+            "success_rate": 0.0,
+            "liked": 0,
+            "disliked": 0,
+            "satisfaction_rate": 0.0,
+            "pending": 0,
+        }
+    answered_col = (
+        pd.to_numeric(df["answered"], errors="coerce")
+        if "answered" in df
+        else pd.Series(0, index=df.index, dtype=float)
+    )
+    feedback_col = df["feedback"].fillna("") if "feedback" in df else pd.Series("", index=df.index)
+    status_col = (
+        df["correction_status"].fillna("pending")
+        if "correction_status" in df
+        else pd.Series("pending", index=df.index)
+    )
+    total = int(len(df))
+    answered = int((answered_col == 1).sum())
+    unanswered = int((answered_col == 0).sum())
+    liked = int((feedback_col == "liked").sum())
+    disliked = int((feedback_col == "disliked").sum())
+    feedback_total = liked + disliked
+    return {
+        "total": total,
+        "answered": answered,
+        "unanswered": unanswered,
+        "success_rate": round((answered / total) * 100, 1) if total else 0.0,
+        "liked": liked,
+        "disliked": disliked,
+        "satisfaction_rate": round((liked / feedback_total) * 100, 1) if feedback_total else 0.0,
+        "pending": int(((feedback_col == "disliked") & (status_col == "pending")).sum()),
+    }
+
+
+def _count_for_day(df: pd.DataFrame, day) -> int:
+    if df.empty or "_timestamp_dt" not in df.columns:
+        return 0
+    return int((df["_timestamp_dt"].dt.date == day).sum())
+
+
+def _trend(current: float, previous: float, *, percent_points: bool = False) -> tuple[str, str]:
+    delta = current - previous
+    if percent_points:
+        if abs(delta) < 0.05:
+            return "0 pts", "up"
+        return f"{delta:+.1f} pts", "down" if delta < 0 else "up"
+    if abs(delta) < 0.5:
+        return "0", "up"
+    return f"{delta:+,.0f}", "down" if delta < 0 else "up"
+
+
+def _messages_per_day(df: pd.DataFrame, start_date, end_date) -> pd.DataFrame:
+    if df.empty or "_timestamp_dt" not in df.columns:
+        return pd.DataFrame()
+    valid = df.dropna(subset=["_timestamp_dt"]).copy()
+    if valid.empty:
+        return pd.DataFrame()
+    counts = valid.groupby(valid["_timestamp_dt"].dt.date).size()
+    days = pd.date_range(start=start_date, end=end_date, freq="D")
+    return pd.DataFrame(
+        {
+            "Day": days,
+            "Messages": [int(counts.get(day.date(), 0)) for day in days],
+        }
+    )
+
+
+def _public_logs_df(df: pd.DataFrame) -> pd.DataFrame:
+    return df.drop(columns=["_timestamp_dt"], errors="ignore")
 
 
 def append_correction_to_knowledge_base(row, corrected_response: str, correction_note: str) -> Path:
@@ -118,46 +325,87 @@ def append_correction_to_knowledge_base(row, corrected_response: str, correction
     return corrections_path
 
 
-st.markdown('<div class="dashboard-header">University Chatbot Dashboard</div>', unsafe_allow_html=True)
-st.markdown(
-    '<div class="dashboard-subtitle">Usage, satisfaction, unanswered questions, files, and evaluation reports.</div>',
-    unsafe_allow_html=True,
+top_left, top_right = st.columns([1.7, 1])
+with top_left:
+    st.markdown(
+        f"""
+        <div class="admin-topbar">
+            <div class="admin-logo">{ADMIN_ICONS["shield"]}</div>
+            <div class="admin-wordmark">UVSQ</div>
+        </div>
+        <div class="dashboard-header">University Chatbot Dashboard</div>
+        <div class="dashboard-subtitle">
+            Usage, satisfaction, unanswered questions, files, and evaluation reports.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with top_right:
+    right_a, right_b = st.columns([1.35, 0.65])
+    with right_a:
+        period_value = st.date_input(
+            "Période",
+            value=(datetime.now().date() - timedelta(days=43), datetime.now().date()),
+            label_visibility="collapsed",
+            key="admin_period",
+        )
+    with right_b:
+        if st.button("Refresh", icon=":material/refresh:", width="stretch"):
+            st.cache_data.clear()
+            st.rerun()
+
+start_date, end_date = _normalize_period(period_value)
+period_days = (end_date - start_date).days + 1
+previous_end = start_date - timedelta(days=1)
+previous_start = previous_end - timedelta(days=period_days - 1)
+
+all_logs_df = _prepare_logs_df(rows_to_df(get_all_logs()))
+filtered_logs_df = _filter_logs_by_period(all_logs_df, start_date, end_date)
+previous_logs_df = _filter_logs_by_period(all_logs_df, previous_start, previous_end)
+
+current_stats = _snapshot(filtered_logs_df)
+previous_stats = _snapshot(previous_logs_df)
+total = int(current_stats["total"])
+answered = int(current_stats["answered"])
+unanswered = int(current_stats["unanswered"])
+success_rate = float(current_stats["success_rate"])
+today = _count_for_day(filtered_logs_df, datetime.now().date())
+yesterday = _count_for_day(all_logs_df, datetime.now().date() - timedelta(days=1))
+satisfaction_rate = float(current_stats["satisfaction_rate"])
+pending_fixes = int(current_stats["pending"])
+
+total_trend, total_dir = _trend(total, float(previous_stats["total"]))
+success_trend, success_dir = _trend(success_rate, float(previous_stats["success_rate"]), percent_points=True)
+unanswered_trend, unanswered_dir = _trend(unanswered, float(previous_stats["unanswered"]))
+today_trend, today_dir = _trend(today, yesterday)
+satisfaction_trend, satisfaction_dir = _trend(
+    satisfaction_rate,
+    float(previous_stats["satisfaction_rate"]),
+    percent_points=True,
 )
-st.markdown("---")
+pending_trend, pending_dir = _trend(pending_fixes, float(previous_stats["pending"]))
 
-total = get_total_messages()
-answered = get_answered_count()
-unanswered = get_unanswered_count()
-success_rate = get_success_rate()
-today = get_messages_today()
-feedback_counts = get_feedback_counts()
-feedback_total = feedback_counts["liked"] + feedback_counts["disliked"]
-satisfaction_rate = round((feedback_counts["liked"] / feedback_total) * 100, 1) if feedback_total else 0.0
-correction_counts = get_correction_counts()
-
-cols = st.columns(7)
+st.markdown('<div class="metric-row-spacer"></div>', unsafe_allow_html=True)
+cols = st.columns(6)
 with cols[0]:
-    metric_card("Total messages", f"{total:,}")
+    metric_card("Total messages", f"{total:,}", "#2563eb", "messages", total_trend, total_dir)
 with cols[1]:
-    metric_card("Success rate", f"{success_rate}%", "#16a34a")
+    metric_card("Success rate", f"{success_rate}%", "#16a34a", "check", success_trend, success_dir)
 with cols[2]:
-    metric_card("Unanswered", f"{unanswered}", "#ca8a04")
+    metric_card("Unanswered", f"{unanswered}", "#f97316", "help", unanswered_trend, unanswered_dir)
 with cols[3]:
-    metric_card("Today", f"{today}", "#2563eb")
+    metric_card("Today", f"{today}", "#2563eb", "calendar", today_trend, today_dir, "vs yesterday")
 with cols[4]:
-    metric_card("Likes", f"{feedback_counts['liked']}", "#15803d")
+    metric_card("Satisfaction", f"{satisfaction_rate}%", "#7c3aed", "thumb", satisfaction_trend, satisfaction_dir)
 with cols[5]:
-    metric_card("Satisfaction", f"{satisfaction_rate}%", "#7c3aed")
-with cols[6]:
-    metric_card("Pending fixes", f"{correction_counts['pending']}", "#dc2626")
+    metric_card("Pending fixes", f"{pending_fixes}", "#dc2626", "wrench", pending_trend, pending_dir)
 
-all_logs_df = rows_to_df(get_all_logs())
-if not all_logs_df.empty:
-    csv = all_logs_df.to_csv(index=False).encode("utf-8")
+if not filtered_logs_df.empty:
+    csv = _public_logs_df(filtered_logs_df).to_csv(index=False).encode("utf-8")
     st.download_button(
-        "Export all logs CSV",
+        "Export filtered logs CSV",
         data=csv,
-        file_name=f"chat_logs_{datetime.now().strftime('%Y%m%d')}.csv",
+        file_name=f"chat_logs_{start_date:%Y%m%d}_{end_date:%Y%m%d}.csv",
         mime="text/csv",
     )
 
@@ -168,15 +416,26 @@ tabs = st.tabs(
 with tabs[0]:
     col_unanswered, col_recent = st.columns([1, 1])
     with col_unanswered:
-        st.subheader("Questions without answer")
-        unanswered_rows = get_unanswered_questions(limit=15)
+        period_rows = filtered_logs_df.sort_values("_timestamp_dt", ascending=False) if not filtered_logs_df.empty else filtered_logs_df
+        if not period_rows.empty and "answered" in period_rows.columns:
+            unanswered_rows = period_rows[pd.to_numeric(period_rows["answered"], errors="coerce") == 0].head(15).to_dict("records")
+        else:
+            unanswered_rows = []
+        render_section_title("Questions without answer", unanswered)
         if unanswered_rows:
             for row in unanswered_rows:
+                question = clean_cell(row_value(row, "question"))
+                tags = "".join(f'<span class="chip">{html.escape(tag)}</span>' for tag in _question_tags(question))
                 st.markdown(
                     f"""
                     <div class="unanswered-card">
-                      <div class="unanswered-label">{row['timestamp']}</div>
-                      <div class="unanswered-question">{row['question']}</div>
+                      <div class="unanswered-top">
+                        <span>{html.escape(clean_cell(row_value(row, 'timestamp')))}</span>
+                        <span>Source: {html.escape(_source_label(row))}</span>
+                      </div>
+                      <div class="unanswered-question">{html.escape(_trim(question, 190))}</div>
+                      <div>{tags}</div>
+                      <div class="card-menu">⋮</div>
                     </div>
                     """,
                     unsafe_allow_html=True,
@@ -184,27 +443,37 @@ with tabs[0]:
         else:
             st.success("No unanswered questions yet.")
     with col_recent:
-        st.subheader("Recent interactions")
-        recent_rows = get_recent_interactions(limit=15)
+        recent_rows = period_rows.head(15).to_dict("records") if not period_rows.empty else []
+        render_section_title("Recent interactions", f"{total:,}")
         if recent_rows:
+            cards: list[str] = ['<div class="interaction-list">']
             for row in recent_rows:
-                status = "Answered" if row["answered"] else "Unanswered"
-                feedback = row["feedback"] or "no feedback"
-                st.markdown(
-                    f"""
-                    <div class="interaction-card">
-                        <div><strong>{status}</strong> · {feedback} · {row['timestamp']}</div>
-                        <div class="interaction-question">{row['question'][:140]}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
+                is_answered = bool(int(row_value(row, "answered", 0) or 0))
+                status = "Answered" if is_answered else "Unanswered"
+                status_class = "ok" if is_answered else "warn"
+                status_icon = ADMIN_ICONS["ok"] if is_answered else ADMIN_ICONS["info"]
+                response = _trim(clean_cell(row_value(row, "response")), 92)
+                timestamp = clean_cell(row_value(row, "timestamp"))
+                cards.append(
+                    f'<div class="interaction-card">'
+                    f'<div class="interaction-status {status_class}">{status_icon}</div>'
+                    f'<div>'
+                    f'<div class="interaction-meta"><strong>{html.escape(status)}</strong> · {html.escape(timestamp)}</div>'
+                    f'<div class="interaction-question">{html.escape(_trim(clean_cell(row_value(row, "question")), 110))}</div>'
+                    f'<div class="interaction-snippet">{html.escape(response or "No response stored yet.")}</div>'
+                    f'</div>'
+                    f'<div class="interaction-source">{html.escape(_source_label(row))}<br>{html.escape(timestamp[-5:])}</div>'
+                    f'</div>'
                 )
+            cards.append('<div class="interaction-link">Full filtered history is available in All Logs.</div></div>')
+            st.markdown("\n".join(cards), unsafe_allow_html=True)
         else:
             st.info("No interactions yet.")
 
 with tabs[1]:
     st.subheader("Correction workflow")
-    disliked_df = rows_to_df(get_disliked_interactions(limit=100))
+    disliked_df = _prepare_logs_df(rows_to_df(get_disliked_interactions(limit=500)))
+    disliked_df = _filter_logs_by_period(disliked_df, start_date, end_date)
     if disliked_df.empty:
         st.success("No disliked answers yet.")
     else:
@@ -334,23 +603,21 @@ with tabs[1]:
             if col in disliked_df.columns
         ]
         st.divider()
-        st.dataframe(disliked_df[export_columns], use_container_width=True, height=260)
+        st.dataframe(_public_logs_df(disliked_df)[export_columns], width="stretch", height=260)
         st.download_button(
             "Export correction queue CSV",
-            data=disliked_df[export_columns].to_csv(index=False).encode("utf-8"),
-            file_name=f"correction_queue_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+            data=_public_logs_df(disliked_df)[export_columns].to_csv(index=False).encode("utf-8"),
+            file_name=f"correction_queue_{start_date:%Y%m%d}_{end_date:%Y%m%d}.csv",
             mime="text/csv",
         )
 
 with tabs[2]:
     st.subheader("Message trend")
-    days = st.selectbox("Period", [7, 14, 30], format_func=lambda value: f"Last {value} days")
-    trend = rows_to_df(get_messages_per_day(days))
+    st.caption(f"Période affichée : {start_date:%d/%m/%Y} - {end_date:%d/%m/%Y}")
+    trend = _messages_per_day(filtered_logs_df, start_date, end_date)
     if trend.empty:
         st.info("No trend data yet.")
     else:
-        trend.columns = ["Day", "Messages"]
-        trend["Day"] = pd.to_datetime(trend["Day"])
         st.bar_chart(trend.set_index("Day"))
 
     st.subheader("Answered vs unanswered")
@@ -504,11 +771,16 @@ with tabs[4]:
                 "Reranker",
                 value=bool(current["reranking_enabled"]),
             )
+            query_expansion_enabled = st.toggle(
+                "Query expansion / Rerasker",
+                value=bool(current["query_expansion_enabled"]),
+                help="Generate alternate phrasings before RAG retrieval. This is the safe version of the older rerasker, using the configured LLM chain.",
+            )
 
         st.divider()
         st.markdown("**LLM routing**")
         col_backend, col_temp, col_tokens = st.columns([1, 1, 1])
-        backends = ["auto", "vllm", "fallback", "gemini"]
+        backends = ["auto", "gemini", "vllm", "fallback"]
         with col_backend:
             backend_index = backends.index(current["active_backend"]) if current["active_backend"] in backends else 0
             active_backend = st.selectbox(
@@ -516,7 +788,8 @@ with tabs[4]:
                 backends,
                 index=backend_index,
                 help=(
-                    "auto = try vLLM, then fallback, then Gemini. "
+                    "auto = try Gemini first, then optional OpenAI-compatible providers, "
+                    "then the UVSQ/vLLM server as backup. "
                     "Pick a single backend to force it."
                 ),
             )
@@ -561,7 +834,7 @@ with tabs[4]:
 
         st.divider()
         st.markdown("**Retrieval**")
-        col_r1, col_r2, col_r3 = st.columns(3)
+        col_r1, col_r2, col_r3, col_r4 = st.columns(4)
         with col_r1:
             retrieval_top_k = st.number_input(
                 "Retrieval top K", min_value=1, max_value=50, value=int(current["retrieval_top_k"])
@@ -577,6 +850,14 @@ with tabs[4]:
                 max_value=200000,
                 step=500,
                 value=int(current["max_upload_chars"]),
+            )
+        with col_r4:
+            query_expansion_max_variants = st.number_input(
+                "Query variants",
+                min_value=1,
+                max_value=8,
+                value=int(current["query_expansion_max_variants"]),
+                help="Maximum alternate queries generated when query expansion is enabled.",
             )
 
         col_save_settings, col_reset_settings = st.columns([1, 1])
@@ -605,6 +886,8 @@ with tabs[4]:
                     "retrieval_top_k": int(retrieval_top_k),
                     "final_context_k": int(final_context_k),
                     "reranking_enabled": reranking_enabled,
+                    "query_expansion_enabled": query_expansion_enabled,
+                    "query_expansion_max_variants": int(query_expansion_max_variants),
                     "max_upload_chars": int(max_upload_chars),
                 }
             )
@@ -639,15 +922,15 @@ with tabs[5]:
             if scores:
                 st.metric("Hybrid score", f"{sum(scores) / len(scores):.1f}")
         if results:
-            st.dataframe(pd.DataFrame(results), use_container_width=True, height=420)
+            st.dataframe(pd.DataFrame(results), width="stretch", height=420)
 
 with tabs[6]:
     st.subheader("Complete history")
-    if all_logs_df.empty:
-        st.info("No logs yet.")
+    if filtered_logs_df.empty:
+        st.info("No logs in the selected period.")
     else:
         filter_choice = st.radio("Filter", ["All", "Answered", "Unanswered", "Liked", "Disliked"], horizontal=True)
-        df = all_logs_df.copy()
+        df = _public_logs_df(filtered_logs_df).copy()
         if filter_choice == "Answered":
             df = df[df["answered"] == 1]
         elif filter_choice == "Unanswered":
@@ -666,7 +949,6 @@ with tabs[6]:
             "num_docs_found",
             "sources",
         ]
-        st.dataframe(df[[col for col in preferred if col in df.columns]], use_container_width=True, height=520)
+        st.dataframe(df[[col for col in preferred if col in df.columns]], width="stretch", height=520)
 
-st.markdown("---")
-st.caption("M1 Informatique Assistant · Admin dashboard")
+st.markdown('<div class="admin-footer">All times are in Europe/Paris timezone</div>', unsafe_allow_html=True)

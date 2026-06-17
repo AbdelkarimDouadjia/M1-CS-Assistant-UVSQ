@@ -519,12 +519,7 @@ def is_grade_query(text: str) -> bool:
     """True when the message contains explicit `UE : note` pairs to compute."""
     lowered = text.lower()
     random_requested = any(word in lowered for word in {"random", "aléatoire", "aleatoire", "hasard"})
-    has_note_pair = bool(
-        re.search(
-            r"[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ'’ ./_-]{2,}\s*(?:[:=]|->)\s*\d{1,2}(?:[,.]\d+)?",
-            text,
-        )
-    )
+    has_note_pair = bool(_extract_notes(text))
     return any(keyword in lowered for keyword in GRADE_KEYWORDS) and (has_note_pair or random_requested)
 
 
@@ -553,17 +548,83 @@ def _normalize_text(value: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", ascii_only.lower()).strip()
 
 
+def _fold_for_matching(value: str) -> str:
+    decomposed = unicodedata.normalize("NFKD", value)
+    return decomposed.encode("ascii", "ignore").decode("ascii").lower()
+
+
+_UE_ALIAS_HINTS: dict[str, set[str]] = {
+    "MIN17101": {"math", "maths", "mathematiques", "maths discretes", "mathematiques discretes"},
+    "MIN17102": {"complement algo", "algo complexite", "algorithmique complexite", "complexite"},
+    "MIN17103": {"complement prog", "complement programmation", "programmation s1"},
+    "MIN15111": {"ro", "recherche operationnelle", "algorithmique randomisee", "algo randomisee"},
+    "MIN15112": {"reseau", "reseaux", "reseaux systemes", "systemes reseaux"},
+    "MIN15113": {"bd", "bdd", "base de donnees", "bases de donnees", "database"},
+    "MIN15121": {"graphe", "graphes", "algorithmique graphes", "theorie des graphes"},
+    "MIN15122": {"crypto", "cryptographie"},
+    "MIN17211": {"ranking", "methodes ranking", "methodes de ranking"},
+    "MIN17212": {"simulation"},
+    "MIN17213": {"tuning bd", "tuning de bd", "tuning base de donnees"},
+    "MIN17214": {"conception bd", "conception de bd", "conception base de donnees"},
+    "MIN17215": {"protocoles ip", "protocole ip", "ip"},
+    "MIN17216": {"reseaux etendus", "wan"},
+    "MIN17217": {"application web", "web securite", "application web securite"},
+    "MIN17218": {"calcul securise"},
+    "MIN18000": {"evry", "analyse donnees", "analyse des donnees"},
+    "MSANGS2I": {"anglais", "english"},
+    "MIN17201": {"programmation gl preuve", "gl preuve", "preuve", "programmation s2"},
+    "MIN15221": {"ter"},
+}
+
+
+def _ue_aliases(ue: UE) -> set[str]:
+    aliases = {
+        _normalize_text(ue.name),
+        _normalize_text(ue.code),
+    }
+    aliases.update(_UE_ALIAS_HINTS.get(ue.code, set()))
+    return {alias for alias in aliases if alias}
+
+
 def _extract_notes(text: str) -> list[tuple[str, float]]:
     pattern = re.compile(
         r"(?P<label>[A-Za-zÀ-ÿ0-9'’/ ._-]{3,80}?)\s*(?:[:=]|->|:)\s*(?P<note>\d{1,2}(?:[,.]\d+)?)",
         re.IGNORECASE,
     )
     notes: list[tuple[str, float]] = []
+    seen: set[tuple[str, float]] = set()
+
+    def _push(label: str, note: float) -> None:
+        if not (0 <= note <= 20):
+            return
+        label = label.strip(" ,;.\n\t")
+        if not label:
+            return
+        key = (_normalize_text(label), round(note, 3))
+        if key in seen:
+            return
+        seen.add(key)
+        notes.append((label, note))
+
     for match in pattern.finditer(text):
         note = float(match.group("note").replace(",", "."))
-        if 0 <= note <= 20:
-            label = match.group("label").strip(" ,;.\n\t")
-            notes.append((label, note))
+        _push(match.group("label"), note)
+
+    folded = _fold_for_matching(text)
+    known_ues = all_ues(PARCOURS_LIST[0])
+    for ue in known_ues:
+        aliases = sorted(_ue_aliases(ue), key=len, reverse=True)
+        for alias in aliases:
+            escaped = re.escape(alias).replace(r"\ ", r"\s+")
+            boundary = rf"(?<![a-z0-9]){escaped}(?![a-z0-9])"
+            patterns = [
+                re.compile(rf"{boundary}\s*(?:[:=]|->)?\s*(?P<note>\d{{1,2}}(?:[,.]\d+)?)(?:\s*/\s*20)?"),
+                re.compile(rf"(?P<note>\d{{1,2}}(?:[,.]\d+)?)(?:\s*/\s*20)?\s*(?:en|a|à|pour|dans)\s+{boundary}"),
+            ]
+            for alias_pattern in patterns:
+                for match in alias_pattern.finditer(folded):
+                    note = float(match.group("note").replace(",", "."))
+                    _push(ue.name, note)
     return notes
 
 
@@ -571,7 +632,7 @@ def _find_ue(label: str, ues: list[UE]) -> UE | None:
     normalized_label = _normalize_text(label)
     best: tuple[int, UE] | None = None
     for ue in ues:
-        candidates = [_normalize_text(ue.name), _normalize_text(ue.code)]
+        candidates = list(_ue_aliases(ue))
         score = 0
         for candidate in candidates:
             if candidate and candidate in normalized_label:
